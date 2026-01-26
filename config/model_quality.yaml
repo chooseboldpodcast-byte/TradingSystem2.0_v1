@@ -1,0 +1,207 @@
+# config/model_quality.yaml
+# ============================================================================
+# Model Quality Score (MQS) Configuration
+# ============================================================================
+#
+# MQS Formula: Avg_Return × Win_Rate_Factor × Sample_Size_Factor
+#   - Win_Rate_Factor = 0.5 + (Win_Rate / 100)
+#   - Sample_Size_Factor based on trade count (see below)
+#
+# Scores are normalized to 0-100 scale where 100 = best performing model
+#
+# UPDATE POLICY:
+#   - Baseline scores from production backtest data
+#   - Live performance blended in as trades accumulate
+#   - Recalculate after major backtest runs or model changes
+#
+# ============================================================================
+
+version: "1.0"
+last_updated: "2026-01-22"
+data_source: "production_backtest"
+
+# Sample size factors for MQS calculation
+sample_size_factors:
+  tier_1: { min_trades: 0, max_trades: 50, factor: 0.25 }
+  tier_2: { min_trades: 50, max_trades: 500, factor: 0.50 }
+  tier_3: { min_trades: 500, max_trades: 2000, factor: 0.75 }
+  tier_4: { min_trades: 2000, max_trades: 10000, factor: 0.90 }
+  tier_5: { min_trades: 10000, max_trades: null, factor: 1.00 }
+
+# Live blending weights (by number of live trades per model)
+live_blending:
+  tier_1: { min_trades: 0, max_trades: 10, backtest_weight: 1.0, live_weight: 0.0 }
+  tier_2: { min_trades: 10, max_trades: 50, backtest_weight: 0.8, live_weight: 0.2 }
+  tier_3: { min_trades: 50, max_trades: 100, backtest_weight: 0.6, live_weight: 0.4 }
+  tier_4: { min_trades: 100, max_trades: null, backtest_weight: 0.5, live_weight: 0.5 }
+
+# ============================================================================
+# BASELINE MQS SCORES (from production backtest)
+# ============================================================================
+# Calculated: 2026-01-22
+# Source: database/weinstein.db production runs
+#
+# Raw calculation:
+#   Weinstein_Core:      21.81% avg × 0.878 win_factor × 1.0 size = 19.15 → 100
+#   52W_High_Momentum:   12.25% avg × 0.963 win_factor × 1.0 size = 11.80 → 62
+#   Consolidation:        7.54% avg × 0.983 win_factor × 0.9 size =  6.67 → 35
+#   VCP:                  7.80% avg × 0.801 win_factor × 0.9 size =  5.62 → 29
+#   Pocket_Pivot:         3.88% avg × 0.810 win_factor × 1.0 size =  3.14 → 16
+#   Dual_Momentum:        2.65% avg × 0.725 win_factor × 1.0 size =  1.92 → 10
+#   RS_Breakout:          3.64% avg × 0.793 win_factor × 0.75 size = 2.17 → 11
+#   RSI_Mean_Reversion:   0.47% avg × 1.007 win_factor × 1.0 size =  0.47 →  2
+#   Enhanced_Mean_Rev:    1.77% avg × 0.885 win_factor × 0.25 size = 0.39 →  2
+#   High_Tight_Flag:     -4.05% avg × 0.500 win_factor × 0.25 size = -0.51 → 0
+# ============================================================================
+
+baseline_scores:
+  # Top Tier - Proven high performers
+  Weinstein_Core: 100
+  52W_High_Momentum: 62
+
+  # Mid Tier - Solid performers
+  Consolidation_Breakout: 35
+  VCP: 29
+
+  # Lower Tier - Moderate performers
+  Pocket_Pivot: 16
+  RS_Breakout: 11
+  Dual_Momentum: 10
+
+  # Bottom Tier - Low/unproven performers
+  RSI_Mean_Reversion: 2
+  Enhanced_Mean_Reversion: 2
+  High_Tight_Flag: 0
+
+# Backtest statistics for reference (used in blending calculations)
+backtest_stats:
+  Weinstein_Core:
+    trades: 13907
+    avg_return_pct: 21.81
+    win_rate_pct: 37.8
+    profit_factor: 4.51
+  52W_High_Momentum:
+    trades: 29055
+    avg_return_pct: 12.25
+    win_rate_pct: 46.3
+    profit_factor: 2.43
+  Consolidation_Breakout:
+    trades: 4880
+    avg_return_pct: 7.54
+    win_rate_pct: 48.3
+    profit_factor: 2.47
+  VCP:
+    trades: 3906
+    avg_return_pct: 7.80
+    win_rate_pct: 30.1
+    profit_factor: 2.78
+  Pocket_Pivot:
+    trades: 33730
+    avg_return_pct: 3.88
+    win_rate_pct: 31.0
+    profit_factor: 2.65
+  Dual_Momentum:
+    trades: 32768
+    avg_return_pct: 2.65
+    win_rate_pct: 22.5
+    profit_factor: 2.03
+  RS_Breakout:
+    trades: 2099
+    avg_return_pct: 3.64
+    win_rate_pct: 29.3
+    profit_factor: 1.59
+  RSI_Mean_Reversion:
+    trades: 22563
+    avg_return_pct: 0.47
+    win_rate_pct: 50.7
+    profit_factor: 1.21
+  Enhanced_Mean_Reversion:
+    trades: 26
+    avg_return_pct: 1.77
+    win_rate_pct: 38.5
+    profit_factor: 2.54
+  High_Tight_Flag:
+    trades: 12
+    avg_return_pct: -4.05
+    win_rate_pct: 0.0
+    profit_factor: 0.0
+
+# ============================================================================
+# CSS (Composite Signal Strength) CONFIGURATION
+# ============================================================================
+
+css_weights:
+  rs_score: 0.35           # Relative Strength (Mansfield RS)
+  momentum_score: 0.25     # Multi-timeframe momentum
+  volume_score: 0.20       # Volume ratio vs average
+  tightness_score: 0.10    # Price distance from MA (lower = tighter = better)
+  model_quality_score: 0.10  # MQS from this config
+
+css_thresholds:
+  rs_minimum: 80           # Tier 1 filter - must have RS >= 80
+
+grade_ranges:
+  A_plus: { min: 85, max: 100 }
+  A: { min: 75, max: 84 }
+  B: { min: 65, max: 74 }
+  C: { min: 55, max: 64 }
+  D: { min: 0, max: 54 }
+
+# RS Score mapping (Mansfield RS → 0-100 score)
+rs_score_mapping:
+  - { min_rs: 90, max_rs: 999, score: 100 }   # Elite leader
+  - { min_rs: 80, max_rs: 89, score: 85 }     # Strong leader
+  - { min_rs: 70, max_rs: 79, score: 70 }     # Above average
+  - { min_rs: 50, max_rs: 69, score: 50 }     # Average
+  - { min_rs: 0, max_rs: 49, score: 25 }      # Laggard
+
+# Volume Score mapping (volume_ratio → 0-100 score)
+volume_score_mapping:
+  - { min_ratio: 2.5, max_ratio: 999, score: 100 }   # Strong institutional
+  - { min_ratio: 2.0, max_ratio: 2.49, score: 90 }   # High conviction
+  - { min_ratio: 1.5, max_ratio: 1.99, score: 75 }   # Good participation
+  - { min_ratio: 1.2, max_ratio: 1.49, score: 60 }   # Moderate
+  - { min_ratio: 1.0, max_ratio: 1.19, score: 40 }   # Average
+  - { min_ratio: 0, max_ratio: 0.99, score: 20 }     # Below average
+
+# Tightness Score mapping (price_vs_ma_pct → 0-100 score)
+# Lower distance from MA = tighter setup = higher score
+tightness_score_mapping:
+  - { min_pct: 0, max_pct: 5, score: 100 }     # Tight, near support
+  - { min_pct: 5, max_pct: 10, score: 80 }     # Good setup
+  - { min_pct: 10, max_pct: 15, score: 60 }    # Acceptable
+  - { min_pct: 15, max_pct: 25, score: 40 }    # Extended
+  - { min_pct: 25, max_pct: 999, score: 20 }   # Overextended
+
+# ============================================================================
+# DOCUMENTATION
+# ============================================================================
+
+documentation:
+  mqs_formula: |
+    Model Quality Score (MQS) measures historical model effectiveness.
+    Formula: Avg_Return × Win_Rate_Factor × Sample_Size_Factor
+    - Normalized to 0-100 scale
+    - Updated from backtest data and live trading results
+
+  css_formula: |
+    Composite Signal Strength (CSS) ranks individual signals.
+    CSS = (0.35 × RS) + (0.25 × Momentum) + (0.20 × Volume) + (0.10 × Tightness) + (0.10 × MQS)
+    - RS: Relative strength vs market (Mansfield RS)
+    - Momentum: Multi-timeframe price momentum
+    - Volume: Trading volume vs 50-day average
+    - Tightness: Distance from 30-week MA (closer = better)
+    - MQS: Model's historical quality score
+
+  confidence_definitions:
+    exceptional: "90-95%: All criteria strongly met + multi-timeframe alignment + strong market"
+    high: "80-89%: All criteria met, good momentum score"
+    standard: "75-79%: Meets minimum entry criteria"
+    reduced: "<75%: Borderline setup (shown for reference only)"
+
+  grade_definitions:
+    A_plus: "85-100: Priority buy - highest conviction signals"
+    A: "75-84: Strong candidate - execute with confidence"
+    B: "65-74: Good candidate - solid setup"
+    C: "55-64: Average - consider if capital permits"
+    D: "<55: Low priority - typically skip"

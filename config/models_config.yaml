@@ -1,0 +1,401 @@
+# config/models_config.yaml
+# ============================================================================
+# Multi-Model Trading System Configuration v3.0
+# ============================================================================
+#
+# THREE CONFIGURATIONS:
+#   Config A: 126 stocks, 4 original models (baseline - matches Env1)
+#   Config B: 126 stocks, 8 models (4 original + 4 new) - RESEARCH-BACKED FIXES
+#   Config C: Scanner + 126 stocks, 8 models (full potential)
+#
+# CONFIG B v3.0 CHANGES (Research-Backed):
+#   - Pocket Pivot: 10 Kacher/Morales rules, 2% MA proximity
+#   - VCP: Minervini's exact 8-point Trend Template
+#   - High Tight Flag: O'Neil/Bulkowski 90%+ pole, 42-day max
+#   - RS Breakout: RS rating minimum raised to 80
+#   - New allocations per user specification
+#
+# ============================================================================
+
+# Portfolio Settings (shared across all configs)
+portfolio:
+  initial_capital: 100000
+  data_start_year: 1985
+  cash_reserve_pct: 0.05  # Updated: 5% cash reserve for Config B
+
+# ============================================================================
+# CONFIGURATION DEFINITIONS
+# ============================================================================
+
+configurations:
+  # --------------------------------------------------------------------------
+  # CONFIG A: Phase 4 Enhanced (improved models)
+  # --------------------------------------------------------------------------
+  # Phase 4 Changes:
+  #   - Replaced RSI Mean Reversion with Enhanced Mean Reversion
+  #   - Added Dual Momentum regime filter
+  #   - Increased total allocation to 90% (better capital utilization)
+  # --------------------------------------------------------------------------
+  A:
+    description: "126 stocks, 5 models with Phase 4 enhancements"
+    universe: "core"  # Uses live_universe.txt only
+    models:
+      - weinstein_core
+      - momentum_52w_high
+      - consolidation_breakout
+      - enhanced_mean_reversion
+      - dual_momentum
+    allocations:
+      weinstein_core: 0.35           # 35% - Core strategy (reduced from 40%)
+      momentum_52w_high: 0.20        # 20% - Strong performer (increased from 15%)
+      consolidation_breakout: 0.15   # 15% - bumped to 15% from 10% (01/22/2026)
+      enhanced_mean_reversion: 0.05  # 5% - Replaces RSI (increased from 10%). reduced to 5% on 01/22/2026 as the returns are low and P&L at backtest was almost 0
+      dual_momentum: 0.15            # 10% - NEW: Momentum regime filter. Bumped it up to 15% on 01/22/2026. criteria needs to be tighter.
+    total_allocation: 0.90  # 90% deployed, 10% cash
+  
+  # --------------------------------------------------------------------------
+  # CONFIG B: Extended models with RESEARCH-BACKED FIXES (v3.0)
+  # --------------------------------------------------------------------------
+  # Allocations (user specified):
+  #   Weinstein: 25%
+  #   52Week: 15%
+  #   VCP: 12%
+  #   RS: 12%
+  #   Consolidation: 10%
+  #   HTF: 8%
+  #   RSI Mean: 8%
+  #   Pocket: 5%
+  #   Cash: 5%
+  # --------------------------------------------------------------------------
+  B:
+    description: "126 stocks, BEST 5 models models v3.0 (research-backed fixes)"
+    universe: "core"  # Uses live_universe.txt only
+    models:
+      - weinstein_core
+      - momentum_52w_high
+      - vcp
+      #- rs_breakout
+      - consolidation_breakout
+      #- high_tight_flag
+      #- rsi_mean_reversion
+      #- pocket_pivot
+    allocations:
+      weinstein_core: 0.35          # 30% - Core strategy
+      momentum_52w_high: 0.25       # 20% - Proven performer
+      vcp: 0.12                     # 12% - Trend Template fixed
+      #rs_breakout: 0.10             # 10% - RS>=70 fixed
+      consolidation_breakout: 0.15  # 15%
+      #high_tight_flag: 0.08        # 0% - Rare but powerful (O'Neil/Bulkowski)
+      #rsi_mean_reversion: 0.08     # 0%
+      #pocket_pivot: 0.08            # 8% - Reduced (was causing trade blocking)
+    total_allocation: 0.87          # 95% deployed, 5% cash
+  
+  # --------------------------------------------------------------------------
+  # CONFIG C: Scanner + Phase 4 models (same as Config A but with scanner)
+  # --------------------------------------------------------------------------
+  C:
+    description: "Scanner + 5 Phase 4 models (Config A + scanner)"
+    universe: "scanner"  # Scanner results ∪ core universe
+    models:
+      - weinstein_core
+      - momentum_52w_high
+      - consolidation_breakout
+      - enhanced_mean_reversion
+      - dual_momentum
+    allocations:
+      weinstein_core: 0.35
+      momentum_52w_high: 0.20
+      consolidation_breakout: 0.15
+      enhanced_mean_reversion: 0.05
+      dual_momentum: 0.15
+    total_allocation: 0.90
+
+# ============================================================================
+# MODEL PARAMETERS v3.0 (Research-Backed)
+# ============================================================================
+
+model_params:
+  # --------------------------------------------------------------------------
+  # ORIGINAL MODELS (unchanged)
+  # --------------------------------------------------------------------------
+  weinstein_core:
+    position_size_pct: 0.10
+    volume_threshold_breakout: 2.0   # Weinstein: "at least 2x average volume"
+    volume_threshold_pullback: 1.5   # Pullback re-entry needs decent volume
+    
+  rsi_mean_reversion:
+    position_size_pct: 0.05
+    rsi_period: 14
+    rsi_entry_threshold: 30
+    rsi_exit_threshold: 50
+    max_hold_days: 15
+    stop_loss_pct: 0.05
+
+  # Phase 4: Enhanced Mean Reversion (replaces RSI Mean Reversion)
+  enhanced_mean_reversion:
+    position_size_pct: 0.08          # 8% (up from RSI's 5%)
+    rsi_period: 14
+    rsi_entry_threshold: 25          # Deeper oversold (was 30)
+    rsi_exit_threshold: 65           # Higher exit (was 50)
+    max_hold_days: 30                # Longer hold (was 15)
+    ma_proximity_pct: 0.03           # Within 3% of MA for entry
+    min_stage_2_days: 30             # Requires confirmed trend
+    stop_below_ma_pct: 0.03          # Technical stop below MA
+    version: "v3.1"
+    key_improvements:
+      - "Deeper oversold entry (RSI < 25 vs 30)"
+      - "MA proximity requirement (at support)"
+      - "Trend confirmation (30+ days Stage 2)"
+      - "Higher exit threshold (RSI 65 vs 50)"
+      - "Technical stop loss (MA-based)"
+      - "Larger position size (8% vs 5%)"
+
+  # Phase 4: Dual Momentum (new regime filter)
+  dual_momentum:
+    position_size_pct: 0.08          # 8% base position
+    momentum_periods:
+      short: 63                       # 3 months
+      medium: 126                     # 6 months
+      long: 252                       # 12 months
+    min_absolute_momentum: 0.0        # Stock must have positive return
+    min_relative_momentum: 0.0        # Must beat SPY
+    exit_absolute_threshold: -0.05    # Exit if 12M return < -5%
+    trailing_stop_pct: 0.15           # 15% trailing stop
+    version: "v3.1"
+    strategy: "dual_momentum"
+    expected_win_rate: "45-55%"
+    expected_profit_factor: "3.0-5.0"
+
+  momentum_52w_high:
+    position_size_pct: 0.08
+    lookback_period: 252
+    volume_threshold: 2.0            # Updated: 2x volume on breakout
+    rs_threshold: 15
+    
+  consolidation_breakout:
+    position_size_pct: 0.10
+    consolidation_min_days: 15
+    consolidation_max_days: 40
+    range_min_pct: 8
+    range_max_pct: 15
+  
+  # --------------------------------------------------------------------------
+  # NEW MODELS v3.0 (Research-Backed Parameters)
+  # --------------------------------------------------------------------------
+  
+  # VCP - Minervini's 8-Point Trend Template
+  vcp:
+    position_size_pct: 0.12
+    # Pattern parameters
+    min_contractions: 2
+    max_contractions: 6
+    min_first_contraction: 10.0  # 10-50% first pullback
+    max_first_contraction: 50.0
+    contraction_decay_min: 0.3   # Each contraction 30-80% of previous
+    contraction_decay_max: 0.8
+    # Trend Template (Minervini exact)
+    rs_rating_min: 80            # Criterion #8
+    min_pct_above_52w_low: 30    # Criterion #6
+    max_pct_from_52w_high: 25    # Criterion #7
+    ma_rising_lookback: 22       # ~1 month for 200-MA rising
+    # Volume
+    breakout_volume_threshold: 2.0   # Minervini also requires 2x+ volume
+    volume_contraction_threshold: 0.9
+    # Risk management
+    stop_loss_pct: 0.07
+    trailing_stop_pct: 0.20
+    version: "v3.0"
+
+  # Pocket Pivot - Kacher/Morales 10 Rules
+  pocket_pivot:
+    position_size_pct: 0.05
+    # Core parameters
+    lookback_days: 10
+    volume_buffer: 1.0
+    # MA proximity (Rule #4, #10) - ChartMill uses 2%
+    ma_proximity_pct: 0.02       # Within 2% of MA = "near"
+    extended_threshold_pct: 0.05 # >5% above both MAs = extended
+    # Downtrend filter (Rule #6)
+    downtrend_lookback_days: 100 # ~5 months
+    downtrend_decline_pct: 0.10
+    # Base parameters (Rule #5)
+    base_max_range_pct: 0.30
+    # V-shape detection (Rule #8)
+    v_shape_lookback: 10
+    v_shape_drop_pct: 0.10
+    v_shape_recovery_pct: 0.10
+    # Wedging detection (Rule #9)
+    wedging_up_days_threshold: 5
+    wedging_volume_decline: 0.75
+    # Risk management
+    stop_loss_pct: 0.05
+    trailing_stop_pct: 0.15
+    version: "v3.0"
+    
+  # RS Breakout - O'Neil methodology
+  rs_breakout:
+    position_size_pct: 0.12
+    # RS parameters
+    rs_rating_min: 80            # User specified 80
+    rs_line_lookback: 20
+    rs_line_confirmation: true
+    # Base parameters
+    min_base_days: 15
+    max_base_days: 65
+    max_base_depth: 35           # Max 35% correction
+    min_base_depth: 8            # Min 8% correction
+    # Volume
+    volume_threshold: 2.0            # O'Neil/IBD requires 2x+ volume on breakout
+    # Entry
+    breakout_buffer: 0.01
+    max_chase: 0.05
+    # Risk management
+    stop_loss_pct: 0.07
+    trailing_stop_pct: 0.20
+    profit_target_pct: 0.25
+    version: "v3.0"
+
+  # High Tight Flag - O'Neil/Bulkowski exact criteria
+  high_tight_flag:
+    position_size_pct: 0.08
+    # Pole parameters (O'Neil exact)
+    min_pole_gain_pct: 90        # Must nearly double (90%+)
+    ideal_pole_gain_pct: 100
+    min_pole_days: 10
+    max_pole_days: 42            # Max 8 weeks (O'Neil exact)
+    # Flag parameters
+    min_flag_pullback_pct: 10
+    max_flag_pullback_pct: 25
+    min_flag_days: 5
+    max_flag_days: 25
+    # Volume
+    flag_volume_contraction: 0.8
+    breakout_volume_threshold: 2.0   # HTF breakouts require strong volume
+    # Entry
+    breakout_buffer_pct: 0.01
+    max_chase_pct: 0.05
+    # Risk management (wider for volatile pattern)
+    stop_loss_pct: 0.10
+    trailing_stop_pct: 0.25
+    # Bulkowski variation
+    use_inbound_trend_filter: true
+    inbound_trend_lookback: 22
+    version: "v3.0"
+    pattern_rarity: "rare"
+
+# ============================================================================
+# SCANNER SETTINGS (for Config C)
+# ============================================================================
+
+scanner:
+  min_price: 3.0
+  max_price: 10000.0
+  min_avg_volume: 200000
+  min_market_cap: 500000000  # $500M
+  exclude_sectors:
+    - Biotechnology
+  trend_template:
+    rs_rating_min: 70
+    max_pct_from_high: 25
+    min_pct_above_low: 30
+    ma_rising_days: 20
+
+# ============================================================================
+# DATABASE SETTINGS
+# ============================================================================
+
+database:
+  path: "database/weinstein.db"
+  auto_save: true
+
+# ============================================================================
+# DASHBOARD SETTINGS
+# ============================================================================
+
+dashboard:
+  port: 8502
+  show_model_breakdown: true
+  show_scanner_tab: true
+  show_config_filter: true
+  default_run: "latest"
+
+# ============================================================================
+# PATHS
+# ============================================================================
+
+paths:
+  data_dir: "data"
+  core_universe: "live_universe.txt"
+  models_dir: "models"
+  models_dev_dir: "models_dev"
+  logs_dir: "logs"
+
+# ============================================================================
+# STAGE 1→2 BREAKOUT MONITOR
+# ============================================================================
+# Weinstein Stage 1→2 transition detection for high-probability breakouts
+# Run: python scripts/stage1_to2_breakout_monitor.py --scan --save
+
+stage1_to2_breakout:
+  enabled: true
+  # Base duration requirements
+  min_base_days: 120            # 6 months minimum (medium base)
+  ideal_base_days: 252          # 12 months (long base - more powerful)
+  max_base_days: 756            # 3 years max
+  # Breakout confirmation
+  min_volume_ratio: 2.0         # Must be 2x average volume
+  volume_lookback: 50           # 50-day average volume
+  # Price requirements
+  breakout_buffer_pct: 0.01     # 1% above resistance to confirm
+  max_extension_pct: 0.05       # Don't chase >5% extended
+  # Relative Strength requirements
+  min_rs_rating: 0              # Minimum Mansfield RS (positive = outperforming)
+  rs_improving_days: 20         # RS must show improvement over X days
+  # Sector requirements
+  sector_stage2_required: true
+  # Risk management
+  stop_loss_method: weinstein   # 'weinstein' or 'percentage'
+  stop_loss_pct: 0.08           # 8% fallback stop
+  # Watchlist - Curated stocks for Stage 1→2 monitoring
+  custom_watchlist:
+    # Drone ecosystem
+    - FEIM    # Frequency Electronics - GPS-denied navigation
+    - COHU    # Cohu - Drone chip testing
+    - TTMI    # TTM Technologies - UAV radar/PCBs
+    - DCO     # Ducommun - Defense components
+    - MTSI    # MACOM Technology - Counter-drone RF
+    # AI Energy / Nuclear / Uranium
+    - LEU     # Centrus Energy - HALEU fuel
+    - MOD     # Modine Manufacturing - DC cooling
+    - POWL    # Powell Industries - Switchgear
+    - BWXT    # BWX Technologies - SMR components
+    - UEC     # Uranium Energy Corp
+    - DNN     # Denison Mines - Uranium
+    - AMBA    # Ambarella - Edge AI chips
+    - ACLS    # Axcelis Technologies - Semi equipment
+    - UUUU    # Energy Fuels - Uranium + REE
+    - NVT     # nVent Electric - DC power
+    - CCJ     # Cameco - Uranium
+    - SMR     # NuScale Power - SMR
+    # Natural Gas / AI Power
+    - TLN     # Talen Energy - Nuclear + Gas IPP
+    - EQT     # EQT Corporation - Gas producer
+    - AR      # Antero Resources - Gas producer
+    - KMI     # Kinder Morgan - Gas transport
+    - KGS     # Kodiak Gas Services - Compression
+
+# ============================================================================
+# VERSION HISTORY
+# ============================================================================
+# v3.0 (2026-01-08): Research-backed model fixes
+#   - Pocket Pivot: Implemented all 10 Kacher/Morales rules
+#   - VCP: Implemented Minervini's exact 8-point Trend Template
+#   - High Tight Flag: O'Neil/Bulkowski 90%+ pole, 42-day max duration
+#   - RS Breakout: RS rating minimum raised to 80
+#   - Allocations: Weinstein 25%, 52W 15%, VCP 12%, RS 12%, 
+#                  Consolidation 10%, HTF 8%, RSI 8%, Pocket 5%
+#   - Cash reserve: 5%
+#
+# v2.0: Performance fixes (early bailout filters)
+# v1.0: Initial multi-model implementation
+# ============================================================================
