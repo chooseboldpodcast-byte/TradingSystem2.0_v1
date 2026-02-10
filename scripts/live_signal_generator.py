@@ -6,12 +6,17 @@ Generates trading signals for today based on the selected configuration.
 Runs daily (typically at 6 AM before market open).
 
 Usage:
+    python scripts/live_signal_generator.py              # Uses config C, saves automatically
     python scripts/live_signal_generator.py --config A   # 126 stocks, 4 models
     python scripts/live_signal_generator.py --config B   # 126 stocks, 8 models
     python scripts/live_signal_generator.py --config C   # Scanner + 126, 8 models
 
     # Generate signals for specific date (backtesting verification)
-    python scripts/live_signal_generator.py --config B --date 2024-01-15
+    python scripts/live_signal_generator.py --date 2024-01-15
+
+NOTE: Config C is the default because it provides the most comprehensive coverage
+      (scanner-detected stocks + core universe) with all 8 models for maximum signal diversity.
+      Signals are saved by default to logs/signals/ for dashboard consumption.
 """
 import pandas as pd
 import numpy as np
@@ -35,7 +40,6 @@ from models.pocket_pivot import PocketPivot
 from models.rs_breakout import RSBreakout
 from models.high_tight_flag import HighTightFlag
 from models.enhanced_mean_reversion import EnhancedMeanReversion
-from models.dual_momentum import DualMomentum
 from core.weinstein_engine import WeinsteinEngine
 from scanner.universe_scanner import get_daily_universe
 
@@ -50,7 +54,6 @@ MODEL_CLASSES = {
     'rs_breakout': RSBreakout,
     'high_tight_flag': HighTightFlag,
     'enhanced_mean_reversion': EnhancedMeanReversion,
-    'dual_momentum': DualMomentum
 }
 
 
@@ -78,7 +81,6 @@ def get_default_model_quality_config() -> dict:
             'VCP': 29,
             'Pocket_Pivot': 16,
             'RS_Breakout': 11,
-            'Dual_Momentum': 10,
             'RSI_Mean_Reversion': 2,
             'Enhanced_Mean_Reversion': 2,
             'High_Tight_Flag': 0
@@ -121,11 +123,10 @@ def calculate_momentum_score(metadata: dict, rs_value: float = 0) -> float:
     """Calculate momentum score from signal metadata
 
     Handles different model types:
-    - Dual_Momentum: uses abs_momentum_12m, 6m, 3m
     - 52W_High_Momentum: uses momentum_score or derives from RS
     - Others: falls back to RS-based estimate
     """
-    # Try Dual_Momentum style metadata first
+    # Try absolute momentum metadata first
     abs_12m = metadata.get('abs_momentum_12m', 0) / 100  # Convert from %
     abs_6m = metadata.get('abs_momentum_6m', 0) / 100
     abs_3m = metadata.get('abs_momentum_3m', 0) / 100
@@ -535,11 +536,11 @@ def print_signals(signals: dict, config_type: str):
 
 def main():
     parser = argparse.ArgumentParser(description='Generate live trading signals')
-    parser.add_argument('--config', type=str, required=True, choices=['A', 'B', 'C'],
-                       help='Configuration: A (4 models), B (8 models), C (scanner + 8 models)')
+    parser.add_argument('--config', type=str, default='C', choices=['A', 'B', 'C'],
+                       help='Configuration: A (4 models), B (8 models), C (scanner + 8 models). Default: C')
     parser.add_argument('--date', type=str, default=None,
                        help='Signal date (YYYY-MM-DD), default is today')
-    parser.add_argument('--save', action='store_true', help='Save signals to file')
+    parser.add_argument('--no-save', action='store_true', help='Do not save signals to file (saves by default)')
     parser.add_argument('--quiet', action='store_true', help='Minimal output')
 
     args = parser.parse_args()
@@ -597,8 +598,8 @@ def main():
     if not args.quiet:
         print_signals(signals, args.config)
 
-    # Save if requested
-    if args.save:
+    # Save by default (unless --no-save is specified)
+    if not args.no_save:
         logs_dir = config.get('paths', {}).get('logs_dir', 'logs')
         filepath = save_signals(signals, args.config, os.path.join(logs_dir, 'signals'))
         print(f"\nSignals saved to: {filepath}")

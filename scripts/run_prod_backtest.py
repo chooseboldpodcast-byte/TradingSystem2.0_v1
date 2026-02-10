@@ -45,20 +45,23 @@ from models.rs_breakout import RSBreakout
 from models.high_tight_flag import HighTightFlag
 # Phase 4: New models
 from models.enhanced_mean_reversion import EnhancedMeanReversion
-from models.dual_momentum import DualMomentum
 
 from core.portfolio_manager import PortfolioManager
 from core.weinstein_engine import WeinsteinEngine
 from core.backtest_logger import BacktestLogger
+from core.market_context import MarketContextAnalyzer
+from core.market_regime import MarketRegime
 from database.db_manager import DatabaseManager
 from scanner.universe_scanner import UniverseScanner
+
+# Sector ETFs for rotation tracking
+SECTOR_ETFS = ['XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC']
 
 # Model name mapping
 MODEL_CLASSES = {
     'weinstein_core': WeinsteinCore,
     'rsi_mean_reversion': RSIMeanReversion,
     'enhanced_mean_reversion': EnhancedMeanReversion,
-    'dual_momentum': DualMomentum,
     'momentum_52w_high': Momentum52WeekHigh,
     'consolidation_breakout': ConsolidationBreakout,
     'vcp': VCP,
@@ -181,9 +184,58 @@ def get_index_data(stock_data: dict):
             index_data = stock_data.pop(symbol)
             print(f"✅ Using {symbol} as market index ({len(index_data)} days)")
             return index_data
-    
+
     print("⚠️  No market index found (^GSPC, GSPC, or SPY)")
     return None
+
+
+def load_sector_data(data_dir: str = 'data', min_year: int = 1985) -> dict:
+    """
+    Load sector ETF data for rotation tracking.
+
+    Args:
+        data_dir: Directory containing CSV files
+        min_year: Minimum year for data
+
+    Returns:
+        Dict of {sector_symbol: DataFrame}
+    """
+    sector_data = {}
+
+    print(f"\n{'='*60}")
+    print(f"LOADING SECTOR ETF DATA")
+    print(f"{'='*60}")
+
+    for symbol in SECTOR_ETFS:
+        filepath = os.path.join(data_dir, f"{symbol}.csv")
+
+        if not os.path.exists(filepath):
+            print(f"  ⚠️  {symbol}: Not found")
+            continue
+
+        try:
+            df = pd.read_csv(filepath, index_col=0, parse_dates=True)
+
+            if not isinstance(df.index, pd.DatetimeIndex):
+                df.index = pd.to_datetime(df.index.astype(str), utc=True)
+
+            if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
+                df.index = df.index.tz_convert(None)
+
+            # Filter by min_year
+            df = df[df.index.year >= min_year]
+
+            if len(df) >= 252:  # At least 1 year of data
+                sector_data[symbol] = df
+                print(f"  ✅ {symbol}: {len(df)} days ({df.index[0].date()} to {df.index[-1].date()})")
+            else:
+                print(f"  ⚠️  {symbol}: Insufficient data ({len(df)} days)")
+
+        except Exception as e:
+            print(f"  ❌ {symbol}: Error - {e}")
+
+    print(f"\n✅ Loaded {len(sector_data)} sector ETFs")
+    return sector_data
 
 
 # ============================================================================
@@ -193,10 +245,16 @@ def get_index_data(stock_data: dict):
 class ProductionBacktest:
     """Backtest engine using PRODUCTION models from models/"""
 
-    def __init__(self, models: list, initial_capital: float = 100000, logger: BacktestLogger = None):
+    def __init__(self, models: list, initial_capital: float = 100000, logger: BacktestLogger = None,
+                 market_context: MarketContextAnalyzer = None, sector_data: dict = None,
+                 enable_regime_filter: bool = False, crisis_only: bool = False):
         self.initial_capital = initial_capital
         self.models = models
         self.logger = logger
+        self.market_context = market_context
+        self.sector_data = sector_data or {}
+        self.enable_regime_filter = enable_regime_filter
+        self.crisis_only = crisis_only
 
         print(f"\n{'='*60}")
         print(f"PRODUCTION MODELS LOADED FROM models/")
@@ -204,6 +262,15 @@ class ProductionBacktest:
         for model in self.models:
             print(f"✅ {model.name} ({model.allocation_pct*100:.0f}% allocation)")
         print(f"Total allocation: {sum(m.allocation_pct for m in self.models)*100:.0f}%")
+
+        if self.enable_regime_filter and self.market_context:
+            if self.crisis_only:
+                print(f"\n🛡️  MARKET REGIME FILTER: CRISIS-ONLY (VIX > 35)")
+            else:
+                print(f"\n🛡️  MARKET REGIME FILTER: FULL (BEAR/CAUTION/CRISIS)")
+            print(f"   Sector ETFs loaded: {len(self.sector_data)}")
+        else:
+            print(f"\n⚠️  MARKET REGIME FILTER: DISABLED (baseline mode)")
 
         self.portfolio = PortfolioManager(
             initial_capital=initial_capital,
@@ -220,8 +287,19 @@ class ProductionBacktest:
                 'accepted': 0,
                 'rejected_no_capital': 0,
                 'rejected_duplicate': 0,
-                'rejected_allocation': 0
+                'rejected_allocation': 0,
+                'rejected_regime': 0  # NEW: Track regime rejections
             }
+
+        # Track regime statistics
+        self.regime_stats = {
+            'regime_changes': [],
+            'trades_by_regime': {r.value: 0 for r in MarketRegime},
+            'pnl_by_regime': {r.value: 0.0 for r in MarketRegime},
+            'rejected_by_regime': {r.value: 0 for r in MarketRegime}
+        }
+        self.current_regime = None
+        self.current_context = None
     
     def run(self, stock_data: dict, index_data: pd.DataFrame):
         """Run backtest with production models - EXACT COPY OF ENV1 LOGIC"""
@@ -264,7 +342,7 @@ class ProductionBacktest:
         
         # PHASE 3: Process signals chronologically (EXACT COPY from Env1)
         print(f"\nPhase 3: Processing signals chronologically...")
-        self._process_signals_chronologically(all_signals, analyzed_data)
+        self._process_signals_chronologically(all_signals, analyzed_data, index_data)
         
         self._print_rejection_stats()
         
@@ -428,9 +506,6 @@ class ProductionBacktest:
             elif model.name == 'Enhanced_Mean_Reversion' and current_stage in [3, 4]:
                 exit_reason = f'STAGE_{current_stage}'
                 exit_signal_added = True
-            elif model.name == 'Dual_Momentum' and current_stage in [3, 4]:
-                exit_reason = f'STAGE_{current_stage}'
-                exit_signal_added = True
 
             if exit_signal_added:
                 signals.append({
@@ -455,13 +530,15 @@ class ProductionBacktest:
         return signals
     
     def _process_signals_chronologically(
-        self, 
+        self,
         signals_df: pd.DataFrame,
-        analyzed_data: dict
+        analyzed_data: dict,
+        index_data: pd.DataFrame = None
     ):
         """
         Process signals in time order
         EXACT COPY OF WORKING LOGIC from Env1 run_multi_model_backtest.py
+        Enhanced with Phase 0 market regime filter support.
         """
         total_signals = len(signals_df)
         processed = 0
@@ -524,10 +601,93 @@ class ProductionBacktest:
             elif signal_type == 'ENTRY':
                 self.rejection_stats[model_name]['total_signals'] += 1
 
+                # ================================================================
+                # PHASE 0: MARKET REGIME FILTER
+                # Check if market conditions allow this trade
+                # ================================================================
+                if self.enable_regime_filter and self.market_context:
+                    # Get market context for this date (use cached if same date)
+                    if not hasattr(self, '_last_context_date') or self._last_context_date != signal_date:
+                        try:
+                            # Filter data up to current date for backtesting
+                            spy_to_date = index_data[index_data.index <= signal_date]
+                            sector_to_date = {
+                                k: v[v.index <= signal_date]
+                                for k, v in self.sector_data.items()
+                                if len(v[v.index <= signal_date]) > 0
+                            }
+
+                            if len(spy_to_date) >= 210:  # Need 200+ days for MA
+                                self.current_context = self.market_context.get_full_context(
+                                    spy_to_date,
+                                    sector_to_date,
+                                    as_of_date=signal_date
+                                )
+                                self._last_context_date = signal_date
+
+                                # Track regime changes
+                                new_regime = self.current_context['regime']
+                                if self.current_regime != new_regime:
+                                    self.regime_stats['regime_changes'].append({
+                                        'date': signal_date,
+                                        'from': self.current_regime.value if self.current_regime else None,
+                                        'to': new_regime.value
+                                    })
+                                    self.current_regime = new_regime
+                        except Exception as e:
+                            # If context fails, allow trade (conservative)
+                            pass
+
+                    # Check if trade should be taken based on regime
+                    if self.current_context:
+                        current_regime = self.current_context['regime']
+
+                        # CRISIS-ONLY mode: only filter when VIX > 35 (CRISIS regime)
+                        if self.crisis_only:
+                            should_trade = current_regime != MarketRegime.CRISIS
+                            reason = "CRISIS regime (VIX > 35) - no new positions" if not should_trade else ""
+                        else:
+                            # Full regime filter mode
+                            should_trade, reason = self.market_context.should_take_trade(
+                                symbol, self.current_context
+                            )
+
+                        if not should_trade:
+                            self.rejection_stats[model_name]['rejected_regime'] += 1
+                            regime_name = current_regime.value
+                            self.regime_stats['rejected_by_regime'][regime_name] += 1
+
+                            if self.logger:
+                                self.logger.log_signal_rejected(
+                                    date=signal_date,
+                                    symbol=symbol,
+                                    model=model_name,
+                                    reason=f'REGIME_FILTER: {reason}',
+                                    available_capital=0,
+                                    required_capital=0,
+                                    model_allocation=0,
+                                    model_deployed=0,
+                                    details={'regime': regime_name, 'reason': reason}
+                                )
+                            continue
+
                 # Get model-specific available capital
                 model_available_capital = self.portfolio.get_model_available_capital(model_name)
                 model_allocation = self.initial_capital * model.allocation_pct
                 model_deployed = self.portfolio.capital_by_model[model_name]
+
+                # Apply regime multiplier to position sizing if enabled
+                regime_multiplier = 1.0
+                if self.enable_regime_filter and self.current_context:
+                    if self.crisis_only:
+                        # Crisis-only mode: full position sizes unless CRISIS
+                        # (but CRISIS trades are already filtered above, so this is just safety)
+                        if self.current_context['regime'] == MarketRegime.CRISIS:
+                            regime_multiplier = 0.0  # Should never reach here due to filter above
+                    else:
+                        # Full regime filter: apply deployment multiplier
+                        regime_multiplier = self.current_context.get('final_deployment_multiplier', 1.0)
+                    model_available_capital *= regime_multiplier
 
                 entry_price = signal_data['entry_price']
                 shares = model.calculate_position_size(
@@ -734,7 +894,7 @@ class ProductionBacktest:
         print(f"\n{'='*60}")
         print("SIGNAL ACCEPTANCE STATISTICS")
         print(f"{'='*60}")
-        
+
         for name, stats in self.rejection_stats.items():
             if stats['total_signals'] > 0:
                 rate = (stats['accepted'] / stats['total_signals']) * 100
@@ -744,6 +904,24 @@ class ProductionBacktest:
                 print(f"  Rejected - No Capital:  {stats['rejected_no_capital']}")
                 print(f"  Rejected - Duplicate:   {stats['rejected_duplicate']}")
                 print(f"  Rejected - Allocation:  {stats['rejected_allocation']}")
+                if stats.get('rejected_regime', 0) > 0:
+                    print(f"  Rejected - Regime:      {stats['rejected_regime']}")
+
+        # Print regime statistics if enabled
+        if self.enable_regime_filter and self.regime_stats['regime_changes']:
+            print(f"\n{'='*60}")
+            print("MARKET REGIME STATISTICS")
+            print(f"{'='*60}")
+            print(f"\nRegime Changes: {len(self.regime_stats['regime_changes'])}")
+            for change in self.regime_stats['regime_changes'][:10]:  # Show first 10
+                print(f"  {change['date'].date()}: {change['from']} → {change['to']}")
+            if len(self.regime_stats['regime_changes']) > 10:
+                print(f"  ... and {len(self.regime_stats['regime_changes']) - 10} more")
+
+            print(f"\nRejected by Regime:")
+            for regime, count in self.regime_stats['rejected_by_regime'].items():
+                if count > 0:
+                    print(f"  {regime}: {count} signals")
     
     def _calculate_results(self) -> dict:
         """Calculate final results - EXACT COPY from Env1"""
@@ -853,6 +1031,10 @@ def main():
     parser.add_argument('--description', type=str, default='', help='Run description')
     parser.add_argument('--no-save', action='store_true', help='Do not save to database')
     parser.add_argument('--enable-logs', action='store_true', help='Enable diagnostic logging (for troubleshooting)')
+    parser.add_argument('--enable-regime-filter', action='store_true',
+                       help='Enable Phase 0 market regime filter (reduces exposure in bear/crisis markets)')
+    parser.add_argument('--crisis-only', action='store_true',
+                       help='Only filter during CRISIS (VIX > 35). Ignores BEAR/CAUTION regimes.')
 
     args = parser.parse_args()
 
@@ -890,6 +1072,13 @@ def main():
         print(f"Diagnostic Logging: ENABLED (logs/{bt_logger.run_id})")
     else:
         print(f"Diagnostic Logging: DISABLED (use --enable-logs to turn on)")
+    if args.enable_regime_filter:
+        if args.crisis_only:
+            print(f"Market Regime Filter: CRISIS-ONLY (VIX > 35)")
+        else:
+            print(f"Market Regime Filter: ENABLED (Phase 0 - Full)")
+    else:
+        print(f"Market Regime Filter: DISABLED (baseline mode)")
     print("="*80)
     
     # Load universe based on config
@@ -902,6 +1091,9 @@ def main():
             universe = [line.strip() for line in f if line.strip()]
         # Add index symbols
         universe.extend(['^GSPC', 'GSPC', 'SPY'])
+        # Add sector ETFs for regime filter (will be loaded separately)
+        if args.enable_regime_filter:
+            universe.extend(SECTOR_ETFS)
         universe = list(set(universe))  # Remove duplicates
     else:
         # Scanner universe - run Trend Template filter and union with core
@@ -925,6 +1117,9 @@ def main():
 
         # Ensure index symbols are included
         universe.extend(['^GSPC', 'GSPC', 'SPY'])
+        # Add sector ETFs for regime filter
+        if args.enable_regime_filter:
+            universe.extend(SECTOR_ETFS)
         universe = list(set(universe))
 
         # Report scanner results
@@ -951,20 +1146,40 @@ def main():
         return 1
     
     print(f"\n✅ Ready to backtest {len(all_data)} stocks")
-    
+
+    # Load sector data if regime filter enabled
+    sector_data = {}
+    market_context = None
+    if args.enable_regime_filter:
+        sector_data = load_sector_data(data_dir=data_dir, min_year=min_year)
+        if len(sector_data) >= 5:  # Need at least 5 sectors for meaningful rotation analysis
+            market_context = MarketContextAnalyzer()
+            print(f"\n✅ Market context analyzer initialized with {len(sector_data)} sectors")
+        else:
+            print(f"\n⚠️  Insufficient sector data ({len(sector_data)} ETFs), regime filter disabled")
+            args.enable_regime_filter = False
+
     # Create models
     models = create_models(config_settings)
     print(f"Models: {[m.name for m in models]}")
 
     # Run backtest
-    backtest = ProductionBacktest(models, args.capital, logger=bt_logger)
+    backtest = ProductionBacktest(
+        models,
+        args.capital,
+        logger=bt_logger,
+        market_context=market_context,
+        sector_data=sector_data,
+        enable_regime_filter=args.enable_regime_filter,
+        crisis_only=args.crisis_only
+    )
     results = backtest.run(all_data, index_data)
     
     # Save to database
     if not args.no_save and results.get('total_trades', 0) > 0:
         db_path = config.get('database', {}).get('path', 'database/weinstein.db')
         db = DatabaseManager(db_path)
-        
+
         run_id = db.save_backtest_run(
             results=results,
             run_type='production',
@@ -974,7 +1189,10 @@ def main():
                 'models': [m.name for m in models],
                 'universe_size': len(all_data),
                 'min_year': min_year,
-                'config': args.config
+                'config': args.config,
+                'regime_filter_enabled': args.enable_regime_filter,
+                'sector_etfs_loaded': len(sector_data) if args.enable_regime_filter else 0,
+                'regime_changes': len(backtest.regime_stats['regime_changes']) if args.enable_regime_filter else 0
             }
         )
 

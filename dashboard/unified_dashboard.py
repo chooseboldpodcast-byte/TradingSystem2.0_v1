@@ -126,7 +126,6 @@ def load_model_allocations():
             '52W_High_Momentum': allocations.get('momentum_52w_high', 0.20),
             'Consolidation_Breakout': allocations.get('consolidation_breakout', 0.10),
             'Enhanced_Mean_Reversion': allocations.get('enhanced_mean_reversion', 0.15),
-            'Dual_Momentum': allocations.get('dual_momentum', 0.20),
             'VCP': allocations.get('vcp', 0.10),
             'Pocket_Pivot': allocations.get('pocket_pivot', 0.10),
             'RS_Breakout': allocations.get('rs_breakout', 0.10),
@@ -1085,7 +1084,6 @@ if is_live_mode:
             | Weinstein_Core | 100 | 21.81% avg return, 4.51 PF |
             | 52W_High_Momentum | 62 | 12.25% avg return, 2.43 PF |
             | Consolidation_Breakout | 35 | 7.54% avg return, 2.47 PF |
-            | Dual_Momentum | 10 | 2.65% avg return, 2.03 PF |
 
             *MQS blends backtest data with live trading results over time.*
             """)

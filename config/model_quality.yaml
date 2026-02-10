@@ -47,7 +47,6 @@ live_blending:
 #   Consolidation:        7.54% avg × 0.983 win_factor × 0.9 size =  6.67 → 35
 #   VCP:                  7.80% avg × 0.801 win_factor × 0.9 size =  5.62 → 29
 #   Pocket_Pivot:         3.88% avg × 0.810 win_factor × 1.0 size =  3.14 → 16
-#   Dual_Momentum:        2.65% avg × 0.725 win_factor × 1.0 size =  1.92 → 10
 #   RS_Breakout:          3.64% avg × 0.793 win_factor × 0.75 size = 2.17 → 11
 #   RSI_Mean_Reversion:   0.47% avg × 1.007 win_factor × 1.0 size =  0.47 →  2
 #   Enhanced_Mean_Rev:    1.77% avg × 0.885 win_factor × 0.25 size = 0.39 →  2
@@ -66,7 +65,6 @@ baseline_scores:
   # Lower Tier - Moderate performers
   Pocket_Pivot: 16
   RS_Breakout: 11
-  Dual_Momentum: 10
 
   # Bottom Tier - Low/unproven performers
   RSI_Mean_Reversion: 2
@@ -100,11 +98,6 @@ backtest_stats:
     avg_return_pct: 3.88
     win_rate_pct: 31.0
     profit_factor: 2.65
-  Dual_Momentum:
-    trades: 32768
-    avg_return_pct: 2.65
-    win_rate_pct: 22.5
-    profit_factor: 2.03
   RS_Breakout:
     trades: 2099
     avg_return_pct: 3.64

@@ -6,7 +6,6 @@ Contains all trading model implementations:
 - weinstein_core: Stan Weinstein Stage Analysis
 - rsi_mean_reversion: RSI-based mean reversion (legacy, being replaced)
 - enhanced_mean_reversion: Improved mean reversion with stricter filters
-- dual_momentum: Absolute + Relative momentum regime filter
 - momentum_52w_high: 52-week high momentum breakouts
 - consolidation_breakout: Consolidation pattern breakouts
 - vcp: Volatility Contraction Pattern (Minervini)
@@ -31,7 +30,6 @@ from models.high_tight_flag import HighTightFlag
 
 # New models v3.1 (Phase 4 improvements)
 from models.enhanced_mean_reversion import EnhancedMeanReversion
-from models.dual_momentum import DualMomentum
 
 __all__ = [
     'BaseModel',
@@ -45,7 +43,6 @@ __all__ = [
     'RSBreakout',
     'HighTightFlag',
     'EnhancedMeanReversion',
-    'DualMomentum',
 ]
 
 # Model registry for dynamic loading
@@ -53,7 +50,6 @@ MODEL_REGISTRY = {
     'weinstein_core': WeinsteinCore,
     'rsi_mean_reversion': RSIMeanReversion,
     'enhanced_mean_reversion': EnhancedMeanReversion,
-    'dual_momentum': DualMomentum,
     'momentum_52w_high': Momentum52WeekHigh,
     'consolidation_breakout': ConsolidationBreakout,
     'vcp': VCP,

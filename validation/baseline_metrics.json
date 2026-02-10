@@ -1,0 +1,68 @@
+{
+  "created_at": "2026-02-04T14:36:37.454376",
+  "system_version": "pre-enhancement",
+  "config": "C",
+  "survivorship_bias_acknowledged": true,
+  "estimated_bias_pct": 2.0,
+  "metrics": {
+    "total_trades": 19456,
+    "winning_trades": 5085,
+    "losing_trades": 14371,
+    "win_rate_pct": 26.14,
+    "total_pnl": 101207635.96,
+    "total_return_pct": 101207.64,
+    "cagr_pct": 18.66,
+    "profit_factor": 2.08,
+    "avg_win": 38274.21,
+    "avg_loss": -6500.36,
+    "avg_hold_days": 37.3,
+    "initial_capital": 100000,
+    "final_value": 101307635.96,
+    "years": 40.44,
+    "max_drawdown_pct": 13.56,
+    "max_drawdown_date": "2020-04-15",
+    "max_drawdown_duration_days": 90,
+    "recovery_date": "2020-07-14",
+    "sharpe_ratio": 0.74,
+    "sortino_ratio": 1.31,
+    "calmar_ratio": 1.38,
+    "period_start": "1985-01-01",
+    "period_end": "2026-01-31",
+    "config": "C",
+    "description": "Baseline - before any changes",
+    "model_breakdown": {
+      "Weinstein_Core": {
+        "trades": 545,
+        "wins": 200,
+        "losses": 345,
+        "win_rate_pct": 36.7,
+        "total_pnl": 3554245.06,
+        "avg_pnl": 6521.55
+      },
+      "Consolidation_Breakout": {
+        "trades": 410,
+        "wins": 205,
+        "losses": 205,
+        "win_rate_pct": 50.0,
+        "total_pnl": 62775.72,
+        "avg_pnl": 153.11
+      },
+      "52W_High_Momentum": {
+        "trades": 1846,
+        "wins": 897,
+        "losses": 949,
+        "win_rate_pct": 48.6,
+        "total_pnl": 773152.17,
+        "avg_pnl": 418.83
+      },
+      "Enhanced_Mean_Reversion": {
+        "trades": 14,
+        "wins": 5,
+        "losses": 9,
+        "win_rate_pct": 35.7,
+        "total_pnl": 68.94,
+        "avg_pnl": 4.92
+      }
+    }
+  }
+}

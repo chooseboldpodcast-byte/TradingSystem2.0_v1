@@ -33,7 +33,6 @@ configurations:
   # --------------------------------------------------------------------------
   # Phase 4 Changes:
   #   - Replaced RSI Mean Reversion with Enhanced Mean Reversion
-  #   - Added Dual Momentum regime filter
   #   - Increased total allocation to 90% (better capital utilization)
   # --------------------------------------------------------------------------
   A:
@@ -44,14 +43,12 @@ configurations:
       - momentum_52w_high
       - consolidation_breakout
       - enhanced_mean_reversion
-      - dual_momentum
     allocations:
       weinstein_core: 0.35           # 35% - Core strategy (reduced from 40%)
       momentum_52w_high: 0.20        # 20% - Strong performer (increased from 15%)
       consolidation_breakout: 0.15   # 15% - bumped to 15% from 10% (01/22/2026)
       enhanced_mean_reversion: 0.05  # 5% - Replaces RSI (increased from 10%). reduced to 5% on 01/22/2026 as the returns are low and P&L at backtest was almost 0
-      dual_momentum: 0.15            # 10% - NEW: Momentum regime filter. Bumped it up to 15% on 01/22/2026. criteria needs to be tighter.
-    total_allocation: 0.90  # 90% deployed, 10% cash
+    total_allocation: 0.75  # 75% deployed, 25% cash
   
   # --------------------------------------------------------------------------
   # CONFIG B: Extended models with RESEARCH-BACKED FIXES (v3.0)
@@ -101,14 +98,12 @@ configurations:
       - momentum_52w_high
       - consolidation_breakout
       - enhanced_mean_reversion
-      - dual_momentum
     allocations:
       weinstein_core: 0.35
       momentum_52w_high: 0.20
       consolidation_breakout: 0.15
       enhanced_mean_reversion: 0.05
-      dual_momentum: 0.15
-    total_allocation: 0.90
+    total_allocation: 0.75
 
 # ============================================================================
 # MODEL PARAMETERS v3.0 (Research-Backed)
@@ -149,22 +144,6 @@ model_params:
       - "Higher exit threshold (RSI 65 vs 50)"
       - "Technical stop loss (MA-based)"
       - "Larger position size (8% vs 5%)"
-
-  # Phase 4: Dual Momentum (new regime filter)
-  dual_momentum:
-    position_size_pct: 0.08          # 8% base position
-    momentum_periods:
-      short: 63                       # 3 months
-      medium: 126                     # 6 months
-      long: 252                       # 12 months
-    min_absolute_momentum: 0.0        # Stock must have positive return
-    min_relative_momentum: 0.0        # Must beat SPY
-    exit_absolute_threshold: -0.05    # Exit if 12M return < -5%
-    trailing_stop_pct: 0.15           # 15% trailing stop
-    version: "v3.1"
-    strategy: "dual_momentum"
-    expected_win_rate: "45-55%"
-    expected_profit_factor: "3.0-5.0"
 
   momentum_52w_high:
     position_size_pct: 0.08
