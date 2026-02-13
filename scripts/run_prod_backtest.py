@@ -14,12 +14,11 @@ FEATURES:
 5. ✅ Minimum data length: 1260 days (5 years)
 6. ✅ Process EXIT before ENTRY
 7. ✅ min_year filtering from config (default 1985)
-8. ✅ Config A/B/C support with 4 or 8 models
 
 Usage:
-    python scripts/run_prod_backtest.py --config A
-    python scripts/run_prod_backtest.py --config B --start-year 2015
-    python scripts/run_prod_backtest.py --config C --description "Full test"
+    python scripts/run_prod_backtest.py
+    python scripts/run_prod_backtest.py --start-year 2015
+    python scripts/run_prod_backtest.py --description "Full test"
 """
 
 import os
@@ -52,7 +51,6 @@ from core.backtest_logger import BacktestLogger
 from core.market_context import MarketContextAnalyzer
 from core.market_regime import MarketRegime
 from database.db_manager import DatabaseManager
-from scanner.universe_scanner import UniverseScanner
 
 # Sector ETFs for rotation tracking
 SECTOR_ETFS = ['XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC']
@@ -77,19 +75,11 @@ def load_config(config_path: str = 'config/models_config.yaml') -> dict:
         return yaml.safe_load(f)
 
 
-def get_config_settings(config: dict, config_type: str) -> dict:
-    """Get settings for specific config (A, B, or C)"""
-    configs = config.get('configurations', {})
-    if config_type not in configs:
-        raise ValueError(f"Invalid config_type: {config_type}. Must be A, B, or C")
-    return configs[config_type]
-
-
-def create_models(config_settings: dict) -> list:
+def create_models(config: dict) -> list:
     """Create model instances based on config"""
     models = []
-    model_names = config_settings.get('models', [])
-    allocations = config_settings.get('allocations', {})
+    model_names = config.get('models', [])
+    allocations = config.get('allocations', {})
     
     for name in model_names:
         if name in MODEL_CLASSES:
@@ -1024,8 +1014,6 @@ class ProductionBacktest:
 
 def main():
     parser = argparse.ArgumentParser(description='Run production model backtest')
-    parser.add_argument('--config', type=str, required=True, choices=['A', 'B', 'C'],
-                       help='Configuration: A (4 original models), B (All 8 models), C (scanner + 8 models)')
     parser.add_argument('--start-year', type=int, default=1985, help='Start year for backtest data')
     parser.add_argument('--capital', type=int, default=100000, help='Initial capital')
     parser.add_argument('--description', type=str, default='', help='Run description')
@@ -1040,7 +1028,6 @@ def main():
 
     # Load config
     config = load_config()
-    config_settings = get_config_settings(config, args.config)
 
     # Get min_year from config or use argument
     min_year = config.get('portfolio', {}).get('data_start_year', args.start_year)
@@ -1049,24 +1036,22 @@ def main():
 
     # Default description
     if not args.description:
-        args.description = f"Prod Config {args.config} - {datetime.now().strftime('%Y-%m-%d')}"
+        args.description = f"Production - {datetime.now().strftime('%Y-%m-%d')}"
 
     # Initialize diagnostic logger (disabled by default, use --enable-logs to turn on)
     logs_dir = config.get('paths', {}).get('logs_dir', 'logs')
     if args.enable_logs:
         bt_logger = BacktestLogger(
-            config_type=args.config,
             logs_dir=logs_dir
         )
     else:
         bt_logger = None
 
     print("\n" + "="*80)
-    print(f"PRODUCTION BACKTEST - CONFIG {args.config}")
+    print(f"PRODUCTION BACKTEST")
     print("="*80)
     print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Description: {args.description}")
-    print(f"Config: {config_settings['description']}")
     print(f"Min Year: {min_year}")
     if bt_logger:
         print(f"Diagnostic Logging: ENABLED (logs/{bt_logger.run_id})")
@@ -1080,55 +1065,17 @@ def main():
     else:
         print(f"Market Regime Filter: DISABLED (baseline mode)")
     print("="*80)
-    
-    # Load universe based on config
-    universe_type = config_settings.get('universe', 'core')
+
+    # Load universe from core universe file
     core_path = config.get('paths', {}).get('core_universe', 'live_universe.txt')
-    
-    if universe_type == 'core':
-        # Load from universe file
-        with open(core_path, 'r') as f:
-            universe = [line.strip() for line in f if line.strip()]
-        # Add index symbols
-        universe.extend(['^GSPC', 'GSPC', 'SPY'])
-        # Add sector ETFs for regime filter (will be loaded separately)
-        if args.enable_regime_filter:
-            universe.extend(SECTOR_ETFS)
-        universe = list(set(universe))  # Remove duplicates
-    else:
-        # Scanner universe - run Trend Template filter and union with core
-        print(f"\n{'='*60}")
-        print("RUNNING UNIVERSE SCANNER")
-        print(f"{'='*60}")
-
-        scanner_config = config.get('scanner', {})
-        scanner = UniverseScanner(
-            core_universe_path=core_path,
-            min_price=scanner_config.get('min_price', 3.0),
-            max_price=scanner_config.get('max_price', 10000.0),
-            min_avg_volume=scanner_config.get('min_avg_volume', 200000),
-            min_market_cap=scanner_config.get('min_market_cap', 500_000_000),
-            exclude_sectors=scanner_config.get('exclude_sectors', ['Biotechnology']),
-            logger=bt_logger  # Pass logger to scanner
-        )
-
-        data_dir = config.get('paths', {}).get('data_dir', 'data')
-        universe = scanner.quick_scan(data_dir)
-
-        # Ensure index symbols are included
-        universe.extend(['^GSPC', 'GSPC', 'SPY'])
-        # Add sector ETFs for regime filter
-        if args.enable_regime_filter:
-            universe.extend(SECTOR_ETFS)
-        universe = list(set(universe))
-
-        # Report scanner results
-        core_count = len(scanner.core_universe)
-        scanner_added = len(universe) - core_count - 3  # -3 for index symbols
-        print(f"Core universe: {core_count} stocks")
-        print(f"Scanner qualified (new): {max(0, scanner_added)} stocks")
-        print(f"Total universe: {len(universe)} symbols")
-        print(f"{'='*60}\n")
+    with open(core_path, 'r') as f:
+        universe = [line.strip() for line in f if line.strip()]
+    # Add index symbols
+    universe.extend(['^GSPC', 'GSPC', 'SPY'])
+    # Add sector ETFs for regime filter (will be loaded separately)
+    if args.enable_regime_filter:
+        universe.extend(SECTOR_ETFS)
+    universe = list(set(universe))  # Remove duplicates
     
     # Load data
     data_dir = config.get('paths', {}).get('data_dir', 'data')
@@ -1160,7 +1107,7 @@ def main():
             args.enable_regime_filter = False
 
     # Create models
-    models = create_models(config_settings)
+    models = create_models(config)
     print(f"Models: {[m.name for m in models]}")
 
     # Run backtest
@@ -1183,13 +1130,11 @@ def main():
         run_id = db.save_backtest_run(
             results=results,
             run_type='production',
-            config_type=args.config,
             description=args.description,
             parameters={
                 'models': [m.name for m in models],
                 'universe_size': len(all_data),
                 'min_year': min_year,
-                'config': args.config,
                 'regime_filter_enabled': args.enable_regime_filter,
                 'sector_etfs_loaded': len(sector_data) if args.enable_regime_filter else 0,
                 'regime_changes': len(backtest.regime_stats['regime_changes']) if args.enable_regime_filter else 0
@@ -1206,7 +1151,7 @@ def main():
     print("PRODUCTION BACKTEST COMPLETE")
     print(f"{'='*80}\n")
     if not args.no_save and results.get('total_trades', 0) > 0:
-        print(f"✅ Saved as Run #{run_id} (Prod-Config{args.config})")
+        print(f"✅ Saved as Run #{run_id}")
         print(f"   Database: {db_path}")
         print("✅ View results in dashboard")
     else:

@@ -118,8 +118,7 @@ def load_model_allocations():
     try:
         with open('config/models_config.yaml', 'r') as f:
             config = yaml.safe_load(f)
-        # Get allocations from active config (C is default for live)
-        allocations = config.get('configurations', {}).get('C', {}).get('allocations', {})
+        allocations = config.get('allocations', {})
         # Convert to model name format
         return {
             'Weinstein_Core': allocations.get('weinstein_core', 0.35),
@@ -330,24 +329,9 @@ st.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S PT')}")
 if is_live_mode:
     # LIVE MODE SIDEBAR
     st.sidebar.header("🔴 Live Trading")
-    
-    # Config selector for live trading
-    st.sidebar.subheader("⚙️ Configuration")
-    live_config = st.sidebar.selectbox(
-        "Active Config",
-        ["A", "B", "C"],
-        index=0,
-        help="A: 4 models | B: 8 models | C: Scanner + 8 models"
-    )
-    config_descriptions = {
-        "A": "126 stocks, 4 original models",
-        "B": "126 stocks, 8 models (4+4)",
-        "C": "Scanner + 126, 8 models"
-    }
-    st.sidebar.caption(f"📌 {config_descriptions[live_config]}")
-    
+
     st.sidebar.markdown("---")
-    
+
     # Quick stats
     st.sidebar.subheader("📊 Quick Stats")
     
@@ -407,7 +391,7 @@ else:
     
     # ========== FILTERS ==========
     st.sidebar.subheader("🔍 Filters")
-    
+
     # Run Type filter
     run_type_filter = st.sidebar.selectbox(
         "Run Type",
@@ -415,41 +399,22 @@ else:
         index=0,
         help="Filter by production or development runs"
     )
-    
-    # Config Type filter
-    config_type_filter = st.sidebar.selectbox(
-        "Config",
-        ["All", "A", "B", "C"],
-        index=0,
-        help="A: 126 stocks, 4 models | B: 126 stocks, 8 models | C: Scanner + 8 models"
-    )
-    
-    # Config descriptions
-    config_desc = {
-        "A": "126 stocks, 4 original models",
-        "B": "126 stocks, 8 models (4+4)",
-        "C": "Scanner + 126, 8 models"
-    }
-    if config_type_filter != "All":
-        st.sidebar.caption(f"📌 {config_desc.get(config_type_filter, '')}")
-    
+
     st.sidebar.markdown("---")
-    
+
     # Get filtered runs
     rt_filter = None if run_type_filter == "All" else run_type_filter
-    ct_filter = None if config_type_filter == "All" else config_type_filter
-    all_runs = db.get_all_runs(run_type=rt_filter, config_type=ct_filter)
+    all_runs = db.get_all_runs(run_type=rt_filter)
     
     if len(all_runs) == 0:
         st.sidebar.warning("No backtest runs found with selected filters")
         st.stop()
     
-    # Run selector with run_type and config_type info
+    # Run selector
     def format_run_option(x):
         rt = x.get('run_type', 'dev')[:4] if pd.notna(x.get('run_type')) else 'dev'
-        ct = x.get('config_type', '?') if pd.notna(x.get('config_type')) else '?'
-        desc = x['description'][:15] if x['description'] else 'No desc'
-        return f"#{x['id']} [{rt.upper()}/{ct}] {desc}... ({x['total_trades']} trades)"
+        desc = x['description'][:20] if x['description'] else 'No desc'
+        return f"#{x['id']} [{rt.upper()}] {desc}... ({x['total_trades']} trades)"
     
     run_options = all_runs.apply(format_run_option, axis=1)
     selected_run = st.sidebar.selectbox("Select Run", run_options)
@@ -466,10 +431,9 @@ else:
     st.sidebar.markdown("---")
     st.sidebar.subheader("📊 Summary")
     
-    # Show run type and config
+    # Show run type
     rt = run_summary.get('run_type', 'unknown') if pd.notna(run_summary.get('run_type')) else 'unknown'
-    ct = run_summary.get('config_type', '?') if pd.notna(run_summary.get('config_type')) else '?'
-    st.sidebar.markdown(f"**Type:** {rt.title()} / Config {ct}")
+    st.sidebar.markdown(f"**Type:** {rt.title()}")
     
     st.sidebar.metric("Total Return", f"{run_summary['total_return_pct']:.1f}%")
     st.sidebar.metric("CAGR", f"{run_summary['cagr']:.1f}%")

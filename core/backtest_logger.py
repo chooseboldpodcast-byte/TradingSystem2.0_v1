@@ -6,11 +6,10 @@ Backtest Diagnostic Logger
 Comprehensive logging for troubleshooting backtest performance.
 
 LOGS:
-1. Scanner execution - symbols scanned, criteria pass/fail, final yield
-2. Signal generation - every entry/exit signal with full context
-3. Signal rejection - detailed reasons why signals were not executed
-4. Capital allocation - state at each decision point
-5. Position events - opens, closes, stop losses
+1. Signal generation - every entry/exit signal with full context
+2. Signal rejection - detailed reasons why signals were not executed
+3. Capital allocation - state at each decision point
+4. Position events - opens, closes, stop losses
 
 OUTPUT:
 - Console: Summary level information
@@ -20,9 +19,8 @@ OUTPUT:
 Usage:
     from core.backtest_logger import BacktestLogger
 
-    logger = BacktestLogger(config_type='C', run_id='20260121_143022')
-    logger.log_scanner_start(total_symbols=500)
-    logger.log_scanner_criterion(symbol='AAPL', criterion='price_above_50sma', passed=True)
+    logger = BacktestLogger(run_id='20260121_143022')
+    logger.log_signal_generated(...)
     ...
     logger.save_all()
 """
@@ -60,31 +58,6 @@ class ExitReason(Enum):
     MODEL_EXIT = "MODEL_EXIT"
     END_OF_BACKTEST = "END_OF_BACKTEST"
     TIME_EXIT = "TIME_EXIT"
-
-
-@dataclass
-class ScannerCriterionResult:
-    """Result of a single scanner criterion check"""
-    symbol: str
-    criterion: str
-    passed: bool
-    value: Optional[float] = None
-    threshold: Optional[float] = None
-    details: Optional[str] = None
-
-
-@dataclass
-class ScannerSymbolResult:
-    """Full scanner result for a single symbol"""
-    symbol: str
-    passed: bool
-    criteria_results: Dict[str, bool] = field(default_factory=dict)
-    criteria_values: Dict[str, float] = field(default_factory=dict)
-    failure_reason: Optional[str] = None
-    rs_rating: Optional[float] = None
-    price: Optional[float] = None
-    pct_from_52w_high: Optional[float] = None
-    pct_above_52w_low: Optional[float] = None
 
 
 @dataclass
@@ -163,7 +136,6 @@ class BacktestLogger:
 
     def __init__(
         self,
-        config_type: str,
         run_id: Optional[str] = None,
         logs_dir: str = 'logs',
         console_level: int = logging.INFO,
@@ -173,23 +145,19 @@ class BacktestLogger:
         Initialize the backtest logger
 
         Args:
-            config_type: Configuration being run (A, B, or C)
             run_id: Unique identifier for this run (auto-generated if not provided)
             logs_dir: Base directory for log files
             console_level: Logging level for console output
             file_level: Logging level for file output
         """
-        self.config_type = config_type
         self.run_id = run_id or datetime.now().strftime('%Y%m%d_%H%M%S')
         self.logs_dir = logs_dir
 
         # Create run-specific log directory
-        self.run_log_dir = os.path.join(logs_dir, 'backtest_runs', f'config_{config_type}_{self.run_id}')
+        self.run_log_dir = os.path.join(logs_dir, 'backtest_runs', f'run_{self.run_id}')
         os.makedirs(self.run_log_dir, exist_ok=True)
 
         # Initialize data stores
-        self.scanner_results: List[ScannerSymbolResult] = []
-        self.scanner_summary: Dict = {}
         self.signal_events: List[SignalEvent] = []
         self.rejection_events: List[RejectionEvent] = []
         self.capital_snapshots: List[CapitalStateSnapshot] = []
@@ -202,7 +170,6 @@ class BacktestLogger:
         self.logger.info(f"{'='*60}")
         self.logger.info(f"BACKTEST LOGGER INITIALIZED")
         self.logger.info(f"{'='*60}")
-        self.logger.info(f"Config: {config_type}")
         self.logger.info(f"Run ID: {self.run_id}")
         self.logger.info(f"Log Directory: {self.run_log_dir}")
         self.logger.info(f"{'='*60}")
@@ -233,97 +200,6 @@ class BacktestLogger:
         )
         file_handler.setFormatter(file_format)
         self.logger.addHandler(file_handler)
-
-    # =========================================================================
-    # SCANNER LOGGING
-    # =========================================================================
-
-    def log_scanner_start(
-        self,
-        total_symbols: int,
-        core_universe_size: int,
-        scanner_config: Dict
-    ):
-        """Log scanner initialization"""
-        self.scanner_summary = {
-            'start_time': datetime.now().isoformat(),
-            'total_symbols_to_scan': total_symbols,
-            'core_universe_size': core_universe_size,
-            'config': scanner_config,
-            'symbols_scanned': 0,
-            'symbols_passed': 0,
-            'symbols_failed': 0,
-            'failure_reasons': {}
-        }
-
-        self.logger.info(f"SCANNER START: {total_symbols} symbols to scan")
-        self.logger.info(f"  Core universe: {core_universe_size} symbols")
-        self.logger.debug(f"  Scanner config: {json.dumps(scanner_config, indent=2)}")
-
-    def log_scanner_symbol_result(self, result: ScannerSymbolResult):
-        """Log result for a single symbol"""
-        self.scanner_results.append(result)
-        self.scanner_summary['symbols_scanned'] += 1
-
-        if result.passed:
-            self.scanner_summary['symbols_passed'] += 1
-            self.logger.debug(
-                f"SCANNER PASS: {result.symbol} | RS={result.rs_rating:.1f} | "
-                f"Price=${result.price:.2f} | From High={result.pct_from_52w_high:.1f}%"
-            )
-        else:
-            self.scanner_summary['symbols_failed'] += 1
-            reason = result.failure_reason or 'Unknown'
-
-            # Track failure reasons
-            if reason not in self.scanner_summary['failure_reasons']:
-                self.scanner_summary['failure_reasons'][reason] = 0
-            self.scanner_summary['failure_reasons'][reason] += 1
-
-            self.logger.debug(f"SCANNER FAIL: {result.symbol} | Reason: {reason}")
-
-    def log_scanner_criterion_check(
-        self,
-        symbol: str,
-        criterion: str,
-        passed: bool,
-        value: float = None,
-        threshold: float = None
-    ):
-        """Log individual criterion check (for detailed debugging)"""
-        status = "PASS" if passed else "FAIL"
-        msg = f"  {symbol} | {criterion}: {status}"
-        if value is not None and threshold is not None:
-            msg += f" (value={value:.2f}, threshold={threshold:.2f})"
-        self.logger.debug(msg)
-
-    def log_scanner_complete(self, final_universe: List[str]):
-        """Log scanner completion"""
-        self.scanner_summary['end_time'] = datetime.now().isoformat()
-        self.scanner_summary['final_universe_size'] = len(final_universe)
-        self.scanner_summary['final_universe'] = sorted(final_universe)
-
-        # Calculate scanner-only additions
-        core_size = self.scanner_summary['core_universe_size']
-        scanner_additions = len(final_universe) - core_size
-
-        self.logger.info(f"SCANNER COMPLETE:")
-        self.logger.info(f"  Symbols scanned: {self.scanner_summary['symbols_scanned']}")
-        self.logger.info(f"  Passed template: {self.scanner_summary['symbols_passed']}")
-        self.logger.info(f"  Failed template: {self.scanner_summary['symbols_failed']}")
-        self.logger.info(f"  Scanner additions: {max(0, scanner_additions)}")
-        self.logger.info(f"  Final universe: {len(final_universe)}")
-
-        # Log top failure reasons
-        if self.scanner_summary['failure_reasons']:
-            self.logger.info(f"  Top failure reasons:")
-            sorted_reasons = sorted(
-                self.scanner_summary['failure_reasons'].items(),
-                key=lambda x: x[1],
-                reverse=True
-            )[:5]
-            for reason, count in sorted_reasons:
-                self.logger.info(f"    - {reason}: {count}")
 
     # =========================================================================
     # SIGNAL LOGGING
@@ -531,8 +407,6 @@ class BacktestLogger:
         """Get summary statistics"""
         return {
             'run_id': self.run_id,
-            'config_type': self.config_type,
-            'scanner': self.scanner_summary,
             'signals': {
                 'total_generated': len(self.signal_events),
                 'entries': len([s for s in self.signal_events if s.signal_type == 'ENTRY']),
@@ -570,16 +444,6 @@ class BacktestLogger:
     def save_all(self):
         """Save all logs to files"""
         self.logger.info(f"Saving logs to {self.run_log_dir}")
-
-        # Save scanner results
-        if self.scanner_results:
-            scanner_file = os.path.join(self.run_log_dir, 'scanner_results.json')
-            with open(scanner_file, 'w') as f:
-                json.dump({
-                    'summary': self.scanner_summary,
-                    'results': [asdict(r) for r in self.scanner_results]
-                }, f, indent=2, default=str)
-            self.logger.info(f"  Scanner results: {scanner_file}")
 
         # Save signal events
         if self.signal_events:
@@ -629,25 +493,8 @@ class BacktestLogger:
         summary = self.get_summary()
 
         print(f"\n{'='*60}")
-        print(f"DIAGNOSTIC LOG SUMMARY - Config {self.config_type}")
+        print(f"DIAGNOSTIC LOG SUMMARY")
         print(f"{'='*60}")
-
-        # Scanner summary
-        if summary['scanner']:
-            print(f"\nSCANNER:")
-            print(f"  Symbols scanned: {summary['scanner'].get('symbols_scanned', 0)}")
-            print(f"  Passed template: {summary['scanner'].get('symbols_passed', 0)}")
-            print(f"  Final universe: {summary['scanner'].get('final_universe_size', 0)}")
-
-            if summary['scanner'].get('failure_reasons'):
-                print(f"  Top failure reasons:")
-                sorted_reasons = sorted(
-                    summary['scanner']['failure_reasons'].items(),
-                    key=lambda x: x[1],
-                    reverse=True
-                )[:3]
-                for reason, count in sorted_reasons:
-                    print(f"    - {reason}: {count}")
 
         # Signal summary
         print(f"\nSIGNALS:")

@@ -14,13 +14,12 @@ FEATURES:
 5. ✅ Minimum data length: 1260 days (5 years)
 6. ✅ Process EXIT before ENTRY
 7. ✅ min_year filtering from config (default 1985)
-8. ✅ Config A/B/C support with 4 or 8 models
-9. ✅ Dynamic loading of dev models from models_dev/
+8. ✅ Dynamic loading of dev models from models_dev/
 
 Usage:
-    python scripts/run_dev_backtest.py --config A
-    python scripts/run_dev_backtest.py --config B --start-year 2015
-    python scripts/run_dev_backtest.py --config A --description "Test RSI v2"
+    python scripts/run_dev_backtest.py
+    python scripts/run_dev_backtest.py --start-year 2015
+    python scripts/run_dev_backtest.py --description "Test RSI v2"
 """
 
 import os
@@ -93,19 +92,11 @@ def load_config(config_path: str = 'config/models_config.yaml') -> dict:
         return yaml.safe_load(f)
 
 
-def get_config_settings(config: dict, config_type: str) -> dict:
-    """Get settings for specific config (A, B, or C)"""
-    configs = config.get('configurations', {})
-    if config_type not in configs:
-        raise ValueError(f"Invalid config_type: {config_type}. Must be A, B, or C")
-    return configs[config_type]
-
-
-def create_models(config_settings: dict) -> list:
+def create_models(config: dict) -> list:
     """Create model instances based on config"""
     models = []
-    model_names = config_settings.get('models', [])
-    allocations = config_settings.get('allocations', {})
+    model_names = config.get('models', [])
+    allocations = config.get('allocations', {})
     
     for name in model_names:
         if name in MODEL_CLASSES:
@@ -707,52 +698,41 @@ class DevelopmentBacktest:
 
 def main():
     parser = argparse.ArgumentParser(description='Run development model backtest')
-    parser.add_argument('--config', type=str, required=True, choices=['A', 'B', 'C'],
-                       help='Configuration: A (4 models), B (8 models), C (scanner + 8 models)')
     parser.add_argument('--start-year', type=int, default=1985, help='Start year for backtest data')
     parser.add_argument('--capital', type=int, default=100000, help='Initial capital')
     parser.add_argument('--description', type=str, default='', help='Run description')
     parser.add_argument('--no-save', action='store_true', help='Do not save to database')
-    
+
     args = parser.parse_args()
-    
+
     # Load config
     config = load_config()
-    config_settings = get_config_settings(config, args.config)
-    
+
     # Get min_year from config or use argument
     min_year = config.get('portfolio', {}).get('data_start_year', args.start_year)
     if args.start_year != 1985:  # User specified a different year
         min_year = args.start_year
-    
+
     # Default description
     if not args.description:
-        args.description = f"Dev Config {args.config} - {datetime.now().strftime('%Y-%m-%d')}"
-    
+        args.description = f"Development - {datetime.now().strftime('%Y-%m-%d')}"
+
     print("\n" + "="*80)
-    print(f"DEVELOPMENT BACKTEST - CONFIG {args.config}")
+    print(f"DEVELOPMENT BACKTEST")
     print("="*80)
     print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Description: {args.description}")
-    print(f"Config: {config_settings['description']}")
     print(f"Min Year: {min_year}")
     print(f"Source: models_dev/ (DEVELOPMENT)")
     print("="*80)
-    
-    # Load universe based on config
-    universe_type = config_settings.get('universe', 'core')
+
+    # Load universe from core universe file
     core_path = config.get('paths', {}).get('core_universe', 'live_universe.txt')
-    
-    if universe_type == 'core':
-        # Load from universe file
-        with open(core_path, 'r') as f:
-            universe = [line.strip() for line in f if line.strip()]
-        # Add index symbols
-        universe.extend(['^GSPC', 'GSPC', 'SPY'])
-        universe = list(set(universe))  # Remove duplicates
-    else:
-        # Scanner universe - load all from data directory
-        universe = None  # Will load all CSVs
+    with open(core_path, 'r') as f:
+        universe = [line.strip() for line in f if line.strip()]
+    # Add index symbols
+    universe.extend(['^GSPC', 'GSPC', 'SPY'])
+    universe = list(set(universe))  # Remove duplicates
     
     # Load data
     data_dir = config.get('paths', {}).get('data_dir', 'data')
@@ -772,7 +752,7 @@ def main():
     print(f"\n✅ Ready to backtest {len(all_data)} stocks")
     
     # Create models
-    models = create_models(config_settings)
+    models = create_models(config)
     print(f"Models: {[m.name for m in models]}")
     
     # Run backtest
@@ -787,23 +767,22 @@ def main():
         run_id = db.save_backtest_run(
             results=results,
             run_type='development',
-            config_type=args.config,
             description=args.description,
             parameters={
                 'models': [m.name for m in models],
                 'universe_size': len(all_data),
-                'min_year': min_year,
-                'config': args.config
+                'min_year': min_year
             }
         )
-        print(f"\n✅ Saved as Run #{run_id} (Dev-Config{args.config})")
+        print(f"\n✅ Saved as Run #{run_id}")
         print(f"   Database: {db_path}")
-    
+
     print(f"\n{'='*80}")
     print("DEVELOPMENT BACKTEST COMPLETE")
     print(f"{'='*80}")
-    print(f"\n✅ Saved as Run #{run_id} (Dev-Config{args.config})")
-    print(f"   Database: {db_path}")
+    if not args.no_save and results.get('total_trades', 0) > 0:
+        print(f"\n✅ Saved as Run #{run_id}")
+        print(f"   Database: {db_path}")
     print("✅ Results saved with run_type='development'")
     print("✅ View in dashboard")
     print(f"{'='*80}\n")

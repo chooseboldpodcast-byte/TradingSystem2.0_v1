@@ -4,13 +4,11 @@ Comparison Backtest Runner
 
 Runs backtests with different configurations to compare:
 1. Original 4 models (126 stocks) - matches Env1
-2. All 8 models (126 stocks) - incremental from new models
-3. All 8 models (scanner universe) - full potential
+2. All 7 models (126 stocks) - full production set
 
 Usage:
     python scripts/run_comparison_backtest.py --config original
     python scripts/run_comparison_backtest.py --config all_core
-    python scripts/run_comparison_backtest.py --config all_scanner
     python scripts/run_comparison_backtest.py --all  # Run all configs
 """
 import sys
@@ -34,7 +32,6 @@ from models.rs_breakout import RSBreakout
 from models.high_tight_flag import HighTightFlag
 from core.portfolio_manager import PortfolioManager
 from core.weinstein_engine import WeinsteinEngine
-from scanner.universe_scanner import get_daily_universe
 
 # Define model groups locally
 ORIGINAL_MODELS = ['weinstein_core', 'rsi_mean_reversion', 'momentum_52w_high', 'consolidation_breakout']
@@ -64,21 +61,11 @@ def load_config(config_path: str = 'config/models_config.yaml') -> dict:
         return yaml.safe_load(f)
 
 
-def load_universe(universe_type: str, config: dict) -> List[str]:
-    """
-    Load stock universe based on type
-    
-    Args:
-        universe_type: 'core' or 'scanner'
-        config: Configuration dict
-    """
-    if universe_type == 'core':
-        # Load core universe from file
-        with open('live_universe.txt', 'r') as f:
-            return [line.strip() for line in f if line.strip()]
-    else:
-        # Use scanner to get dynamic universe
-        return get_daily_universe(quick=True)
+def load_universe(config: dict) -> List[str]:
+    """Load stock universe from core universe file."""
+    core_path = config.get('paths', {}).get('core_universe', 'live_universe.txt')
+    with open(core_path, 'r') as f:
+        return [line.strip() for line in f if line.strip()]
 
 
 def create_models(model_names: List[str], config: dict) -> List:
@@ -314,7 +301,7 @@ def print_results(results: Dict, config_name: str):
 
 def main():
     parser = argparse.ArgumentParser(description='Run comparison backtests')
-    parser.add_argument('--config', choices=['original', 'all_core', 'all_scanner'],
+    parser.add_argument('--config', choices=['original', 'all_core'],
                        help='Configuration to run')
     parser.add_argument('--all', action='store_true', help='Run all configurations')
     parser.add_argument('--start', type=str, default='2015-01-01',
@@ -333,23 +320,16 @@ def main():
         'original': {
             'name': 'Original 4 Models (Core 126)',
             'models': ORIGINAL_MODELS,
-            'universe': 'core'
         },
         'all_core': {
-            'name': 'All 8 Models (Core 126)',
+            'name': 'All 7 Models (Core 126)',
             'models': ORIGINAL_MODELS + MOMENTUM_MODELS,
-            'universe': 'core'
         },
-        'all_scanner': {
-            'name': 'All 8 Models (Scanner Universe)',
-            'models': ORIGINAL_MODELS + MOMENTUM_MODELS,
-            'universe': 'scanner'
-        }
     }
-    
+
     # Determine which configs to run
     if args.all:
-        configs_to_run = ['original', 'all_core', 'all_scanner']
+        configs_to_run = ['original', 'all_core']
     elif args.config:
         configs_to_run = [args.config]
     else:
@@ -364,7 +344,7 @@ def main():
         print(f"{'#'*60}")
         
         # Load universe
-        universe = load_universe(cfg['universe'], config)
+        universe = load_universe(config)
         print(f"Universe: {len(universe)} stocks")
         
         # Load data

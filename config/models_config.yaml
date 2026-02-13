@@ -2,112 +2,36 @@
 # ============================================================================
 # Multi-Model Trading System Configuration v3.0
 # ============================================================================
-#
-# THREE CONFIGURATIONS:
-#   Config A: 126 stocks, 4 original models (baseline - matches Env1)
-#   Config B: 126 stocks, 8 models (4 original + 4 new) - RESEARCH-BACKED FIXES
-#   Config C: Scanner + 126 stocks, 8 models (full potential)
-#
-# CONFIG B v3.0 CHANGES (Research-Backed):
-#   - Pocket Pivot: 10 Kacher/Morales rules, 2% MA proximity
-#   - VCP: Minervini's exact 8-point Trend Template
-#   - High Tight Flag: O'Neil/Bulkowski 90%+ pole, 42-day max
-#   - RS Breakout: RS rating minimum raised to 80
-#   - New allocations per user specification
-#
-# ============================================================================
 
-# Portfolio Settings (shared across all configs)
+# Portfolio Settings
 portfolio:
   initial_capital: 100000
   data_start_year: 1985
-  cash_reserve_pct: 0.05  # Updated: 5% cash reserve for Config B
+  cash_reserve_pct: 0.05  # 5% cash reserve
 
 # ============================================================================
-# CONFIGURATION DEFINITIONS
+# ACTIVE MODELS & ALLOCATIONS
 # ============================================================================
 
-configurations:
-  # --------------------------------------------------------------------------
-  # CONFIG A: Phase 4 Enhanced (improved models)
-  # --------------------------------------------------------------------------
-  # Phase 4 Changes:
-  #   - Replaced RSI Mean Reversion with Enhanced Mean Reversion
-  #   - Increased total allocation to 90% (better capital utilization)
-  # --------------------------------------------------------------------------
-  A:
-    description: "126 stocks, 5 models with Phase 4 enhancements"
-    universe: "core"  # Uses live_universe.txt only
-    models:
-      - weinstein_core
-      - momentum_52w_high
-      - consolidation_breakout
-      - enhanced_mean_reversion
-    allocations:
-      weinstein_core: 0.35           # 35% - Core strategy (reduced from 40%)
-      momentum_52w_high: 0.20        # 20% - Strong performer (increased from 15%)
-      consolidation_breakout: 0.15   # 15% - bumped to 15% from 10% (01/22/2026)
-      enhanced_mean_reversion: 0.05  # 5% - Replaces RSI (increased from 10%). reduced to 5% on 01/22/2026 as the returns are low and P&L at backtest was almost 0
-    total_allocation: 0.75  # 75% deployed, 25% cash
-  
-  # --------------------------------------------------------------------------
-  # CONFIG B: Extended models with RESEARCH-BACKED FIXES (v3.0)
-  # --------------------------------------------------------------------------
-  # Allocations (user specified):
-  #   Weinstein: 25%
-  #   52Week: 15%
-  #   VCP: 12%
-  #   RS: 12%
-  #   Consolidation: 10%
-  #   HTF: 8%
-  #   RSI Mean: 8%
-  #   Pocket: 5%
-  #   Cash: 5%
-  # --------------------------------------------------------------------------
-  B:
-    description: "126 stocks, BEST 5 models models v3.0 (research-backed fixes)"
-    universe: "core"  # Uses live_universe.txt only
-    models:
-      - weinstein_core
-      - momentum_52w_high
-      - vcp
-      #- rs_breakout
-      - consolidation_breakout
-      #- high_tight_flag
-      #- rsi_mean_reversion
-      #- pocket_pivot
-    allocations:
-      weinstein_core: 0.35          # 30% - Core strategy
-      momentum_52w_high: 0.25       # 20% - Proven performer
-      vcp: 0.12                     # 12% - Trend Template fixed
-      #rs_breakout: 0.10             # 10% - RS>=70 fixed
-      consolidation_breakout: 0.15  # 15%
-      #high_tight_flag: 0.08        # 0% - Rare but powerful (O'Neil/Bulkowski)
-      #rsi_mean_reversion: 0.08     # 0%
-      #pocket_pivot: 0.08            # 8% - Reduced (was causing trade blocking)
-    total_allocation: 0.87          # 95% deployed, 5% cash
-  
-  # --------------------------------------------------------------------------
-  # CONFIG C: Scanner + Phase 4 models (same as Config A but with scanner)
-  # --------------------------------------------------------------------------
-  C:
-    description: "Scanner + 5 Phase 4 models (Config A + scanner)"
-    universe: "scanner"  # Scanner results ∪ core universe
-    models:
-      - weinstein_core
-      - momentum_52w_high
-      - consolidation_breakout
-      - enhanced_mean_reversion
-    allocations:
-      weinstein_core: 0.35
-      momentum_52w_high: 0.20
-      consolidation_breakout: 0.15
-      enhanced_mean_reversion: 0.05
-    total_allocation: 0.75
+models:
+  - momentum_52w_high
+  - vcp
+  - rs_breakout
+  - consolidation_breakout
+  - high_tight_flag
+  - rsi_mean_reversion
+  - pocket_pivot
 
-# ============================================================================
-# MODEL PARAMETERS v3.0 (Research-Backed)
-# ============================================================================
+allocations:
+  momentum_52w_high: 0.20
+  vcp: 0.20
+  rs_breakout: 0.10
+  consolidation_breakout: 0.10
+  high_tight_flag: 0.10
+  rsi_mean_reversion: 0.10
+  pocket_pivot: 0.10
+
+total_allocation: 0.90  # 90% deployed, 10% cash (5% reserve + unallocated)
 
 model_params:
   # --------------------------------------------------------------------------
@@ -263,23 +187,6 @@ model_params:
     pattern_rarity: "rare"
 
 # ============================================================================
-# SCANNER SETTINGS (for Config C)
-# ============================================================================
-
-scanner:
-  min_price: 3.0
-  max_price: 10000.0
-  min_avg_volume: 200000
-  min_market_cap: 500000000  # $500M
-  exclude_sectors:
-    - Biotechnology
-  trend_template:
-    rs_rating_min: 70
-    max_pct_from_high: 25
-    min_pct_above_low: 30
-    ma_rising_days: 20
-
-# ============================================================================
 # DATABASE SETTINGS
 # ============================================================================
 
@@ -294,8 +201,6 @@ database:
 dashboard:
   port: 8502
   show_model_breakdown: true
-  show_scanner_tab: true
-  show_config_filter: true
   default_run: "latest"
 
 # ============================================================================

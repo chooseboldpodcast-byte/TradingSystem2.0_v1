@@ -30,58 +30,23 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DATA_DIR = "data"
 LOG_DIR = "logs/data_updates"
 UNIVERSE_FILE = "live_universe.txt"  # Core stock list
-USE_SCANNER_UNIVERSE = True  # Set to True to download full scanner universe (614+ stocks)
 
 # Create directories
 Path(DATA_DIR).mkdir(exist_ok=True)
 Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
 
-def load_universe(use_scanner=USE_SCANNER_UNIVERSE):
-    """
-    Load trading universe.
-
-    Args:
-        use_scanner: If True, load full scanner universe (614+ stocks)
-                    If False, load only core universe (156 stocks)
-    """
-    # Always include core universe
-    core_symbols = []
+def load_universe():
+    """Load trading universe from core universe file."""
+    symbols = []
     if os.path.exists(UNIVERSE_FILE):
         with open(UNIVERSE_FILE, 'r') as f:
-            core_symbols = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+            symbols = [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
-    if not use_scanner:
-        print(f"Loading core universe: {len(core_symbols)} stocks")
-        # Add benchmark
-        if '^GSPC' not in core_symbols:
-            core_symbols.append('^GSPC')
-        return core_symbols
-
-    # Load full scanner universe
-    try:
-        print("Loading scanner universe (S&P 500 + NASDAQ-100 + growth stocks)...")
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        from scanner.universe_scanner import UniverseScanner
-
-        scanner = UniverseScanner()
-        scanner_symbols = scanner.get_all_us_stocks()
-
-        # Combine with core universe
-        all_symbols = list(set(scanner_symbols) | set(core_symbols))
-
-        # Add benchmark
-        if '^GSPC' not in all_symbols:
-            all_symbols.append('^GSPC')
-
-        print(f"Total universe: {len(all_symbols)} stocks")
-        return all_symbols
-
-    except Exception as e:
-        print(f"Warning: Could not load scanner universe: {e}")
-        print(f"Falling back to core universe: {len(core_symbols)} stocks")
-        if '^GSPC' not in core_symbols:
-            core_symbols.append('^GSPC')
-        return core_symbols
+    print(f"Loading core universe: {len(symbols)} stocks")
+    # Add benchmark
+    if '^GSPC' not in symbols:
+        symbols.append('^GSPC')
+    return symbols
 
 def update_stock_data(symbol, days_back=5):
     """
@@ -173,26 +138,18 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description='Update stock data for trading universe')
-    parser.add_argument('--core-only', action='store_true',
-                       help='Only update core universe (156 stocks), skip scanner universe')
-    parser.add_argument('--scanner', action='store_true',
-                       help='Update full scanner universe (614+ stocks) - this is the default')
-    args = parser.parse_args()
-
-    # Determine which universe to use
-    use_scanner = not args.core_only  # Default is scanner unless --core-only specified
+    parser.parse_args()
 
     print("="*60)
     print("LIVE DATA UPDATE")
     print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Mode: {'Scanner Universe (614+ stocks)' if use_scanner else 'Core Universe (156 stocks)'}")
     print("="*60)
 
     # Create log file
     log_file = os.path.join(LOG_DIR, f"update_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
 
     # Load universe
-    universe = load_universe(use_scanner=use_scanner)
+    universe = load_universe()
     print(f"\nUpdating {len(universe)} symbols...")
     print()
     

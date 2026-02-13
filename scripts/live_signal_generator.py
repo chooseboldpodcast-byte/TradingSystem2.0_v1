@@ -2,21 +2,15 @@
 """
 Live Signal Generator
 
-Generates trading signals for today based on the selected configuration.
+Generates trading signals for today using the core universe and configured models.
 Runs daily (typically at 6 AM before market open).
 
 Usage:
-    python scripts/live_signal_generator.py              # Uses config C, saves automatically
-    python scripts/live_signal_generator.py --config A   # 126 stocks, 4 models
-    python scripts/live_signal_generator.py --config B   # 126 stocks, 8 models
-    python scripts/live_signal_generator.py --config C   # Scanner + 126, 8 models
+    python scripts/live_signal_generator.py              # Saves automatically
+    python scripts/live_signal_generator.py --date 2024-01-15  # Specific date
+    python scripts/live_signal_generator.py --no-save    # Print only
 
-    # Generate signals for specific date (backtesting verification)
-    python scripts/live_signal_generator.py --date 2024-01-15
-
-NOTE: Config C is the default because it provides the most comprehensive coverage
-      (scanner-detected stocks + core universe) with all 8 models for maximum signal diversity.
-      Signals are saved by default to logs/signals/ for dashboard consumption.
+Signals are saved by default to logs/signals/ for dashboard consumption.
 """
 import pandas as pd
 import numpy as np
@@ -41,7 +35,6 @@ from models.rs_breakout import RSBreakout
 from models.high_tight_flag import HighTightFlag
 from models.enhanced_mean_reversion import EnhancedMeanReversion
 from core.weinstein_engine import WeinsteinEngine
-from scanner.universe_scanner import get_daily_universe
 
 # Model mapping
 MODEL_CLASSES = {
@@ -257,34 +250,21 @@ def load_config(config_path: str = 'config/models_config.yaml') -> dict:
         return yaml.safe_load(f)
 
 
-def get_config_settings(config: dict, config_type: str) -> dict:
-    """Get settings for specific config"""
-    configs = config.get('configurations', {})
-    if config_type not in configs:
-        raise ValueError(f"Invalid config_type: {config_type}")
-    return configs[config_type]
-
-
-def load_universe(config_settings: dict, config: dict) -> list:
-    """Load stock universe based on config"""
-    universe_type = config_settings.get('universe', 'core')
+def load_universe(config: dict) -> list:
+    """Load stock universe from core universe file"""
     core_path = config.get('paths', {}).get('core_universe', 'live_universe.txt')
-    data_dir = config.get('paths', {}).get('data_dir', 'data')
-    
+
     with open(core_path, 'r') as f:
-        core_universe = [line.strip() for line in f if line.strip()]
-    
-    if universe_type == 'core':
-        return core_universe
-    else:
-        return get_daily_universe(core_universe_path=core_path, data_dir=data_dir, quick=True)
+        universe = [line.strip() for line in f if line.strip()]
+
+    return universe
 
 
-def create_models(config_settings: dict) -> list:
+def create_models(config: dict) -> list:
     """Create model instances"""
     models = []
-    model_names = config_settings.get('models', [])
-    allocations = config_settings.get('allocations', {})
+    model_names = config.get('models', [])
+    allocations = config.get('allocations', {})
     
     for name in model_names:
         if name in MODEL_CLASSES:
@@ -453,17 +433,16 @@ def generate_signals(
     }
 
 
-def save_signals(signals: dict, config_type: str, output_dir: str = 'logs/signals'):
+def save_signals(signals: dict, output_dir: str = 'logs/signals'):
     """Save signals to JSON file"""
     os.makedirs(output_dir, exist_ok=True)
 
     date_str = signals['summary']['date']
-    filename = f"signals_{config_type}_{date_str}.json"
+    filename = f"signals_{date_str}.json"
     filepath = os.path.join(output_dir, filename)
 
     # Convert datetime objects to strings for JSON and ensure all fields are included
     output = {
-        'config_type': config_type,
         'summary': signals['summary'],
         'entry_signals': [
             {
@@ -494,12 +473,12 @@ def save_signals(signals: dict, config_type: str, output_dir: str = 'logs/signal
     return filepath
 
 
-def print_signals(signals: dict, config_type: str):
+def print_signals(signals: dict):
     """Print signals to console"""
     summary = signals['summary']
 
     print(f"\n{'='*70}")
-    print(f"LIVE SIGNALS - CONFIG {config_type}")
+    print(f"LIVE SIGNALS")
     print(f"Date: {summary['date']}")
     print(f"Stocks Analyzed: {summary['stocks_analyzed']}")
     print(f"RS Filter: >= {summary.get('rs_minimum', 80)}")
@@ -536,8 +515,6 @@ def print_signals(signals: dict, config_type: str):
 
 def main():
     parser = argparse.ArgumentParser(description='Generate live trading signals')
-    parser.add_argument('--config', type=str, default='C', choices=['A', 'B', 'C'],
-                       help='Configuration: A (4 models), B (8 models), C (scanner + 8 models). Default: C')
     parser.add_argument('--date', type=str, default=None,
                        help='Signal date (YYYY-MM-DD), default is today')
     parser.add_argument('--no-save', action='store_true', help='Do not save signals to file (saves by default)')
@@ -553,18 +530,16 @@ def main():
 
     # Load configs
     config = load_config()
-    config_settings = get_config_settings(config, args.config)
     mq_config = load_model_quality_config()
 
     if not args.quiet:
         print(f"\n{'#'*60}")
-        print(f"LIVE SIGNAL GENERATOR - CONFIG {args.config}")
-        print(f"{config_settings['description']}")
+        print(f"LIVE SIGNAL GENERATOR")
         print(f"Signal Date: {signal_date.strftime('%Y-%m-%d')}")
         print(f"{'#'*60}")
 
     # Load universe
-    universe = load_universe(config_settings, config)
+    universe = load_universe(config)
     if not args.quiet:
         print(f"\nUniverse: {len(universe)} stocks")
 
@@ -580,7 +555,7 @@ def main():
         print(f"Analyzed: {len(analyzed_data)} stocks")
 
     # Create models
-    models = create_models(config_settings)
+    models = create_models(config)
     if not args.quiet:
         print(f"Models: {[m.name for m in models]}")
 
@@ -596,12 +571,12 @@ def main():
 
     # Output
     if not args.quiet:
-        print_signals(signals, args.config)
+        print_signals(signals)
 
     # Save by default (unless --no-save is specified)
     if not args.no_save:
         logs_dir = config.get('paths', {}).get('logs_dir', 'logs')
-        filepath = save_signals(signals, args.config, os.path.join(logs_dir, 'signals'))
+        filepath = save_signals(signals, os.path.join(logs_dir, 'signals'))
         print(f"\nSignals saved to: {filepath}")
 
     # Return for programmatic use

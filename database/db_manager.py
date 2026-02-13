@@ -1,12 +1,7 @@
 # database/db_manager.py
 """
 Database manager for Weinstein trading system
-Handles saving and retrieving backtest results with run_type and config_type support
-
-Config Types:
-- A: 126 stocks, 4 original models (baseline)
-- B: 126 stocks, 8 models (4 original + 4 new)
-- C: Scanner + 126 stocks, 8 models (full potential)
+Handles saving and retrieving backtest results with run_type support
 
 Run Types:
 - production: Validated model performance
@@ -22,15 +17,7 @@ from typing import Optional, Tuple
 class DatabaseManager:
     """Manages SQLite database for backtest results"""
     
-    # Valid config and run types
-    VALID_CONFIG_TYPES = ['A', 'B', 'C']
     VALID_RUN_TYPES = ['production', 'development']
-    
-    CONFIG_DESCRIPTIONS = {
-        'A': '126 stocks, 4 original models',
-        'B': '126 stocks, 8 models (4+4)',
-        'C': 'Scanner + 126 stocks, 8 models'
-    }
     
     def __init__(self, db_path: str = "database/weinstein.db"):
         """Initialize database connection"""
@@ -74,51 +61,45 @@ class DatabaseManager:
         conn.commit()
     
     def save_backtest_run(
-        self, 
-        results: dict, 
+        self,
+        results: dict,
         run_type: str = 'development',
-        config_type: str = 'A',
-        description: str = None, 
+        description: str = None,
         parameters: dict = None
     ) -> int:
         """
         Save a backtest run and all its trades to database
-        
+
         Args:
             results: Dictionary from backtest._calculate_results()
             run_type: 'production' or 'development'
-            config_type: 'A', 'B', or 'C'
             description: Optional description of this backtest
             parameters: Optional dict of parameters used
-        
+
         Returns:
             run_id: ID of the saved backtest run
         """
         # Validate inputs
         if run_type not in self.VALID_RUN_TYPES:
             raise ValueError(f"Invalid run_type: {run_type}. Must be one of {self.VALID_RUN_TYPES}")
-        if config_type not in self.VALID_CONFIG_TYPES:
-            raise ValueError(f"Invalid config_type: {config_type}. Must be one of {self.VALID_CONFIG_TYPES}")
-        
+
         # Use provided description or generate simple one
-        # Format: "Prod-ConfigA" or "Dev-ConfigB"
         run_type_short = 'Prod' if run_type == 'production' else 'Dev'
-        auto_desc = f"{run_type_short}-Config{config_type}"
+        auto_desc = f"{run_type_short} - {run_type}"
         final_desc = description if description else auto_desc
-        
+
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
-            
+
             # Save backtest run summary
             cursor.execute("""
                 INSERT INTO backtest_runs (
-                    run_type, config_type, description, initial_capital, final_value, 
+                    run_type, description, initial_capital, final_value,
                     total_pnl, total_return_pct, cagr, total_trades, winning_trades,
                     losing_trades, win_rate, profit_factor, avg_hold_days, parameters
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 run_type,
-                config_type,
                 final_desc,
                 results.get('initial_capital', 100000),
                 results.get('initial_capital', 100000) + results['total_pnl'],
@@ -184,27 +165,24 @@ class DatabaseManager:
                     ))
             
             conn.commit()
-            print(f"✅ Saved {run_type} backtest (Config {config_type}) as run #{run_id}")
+            print(f"✅ Saved {run_type} backtest as run #{run_id}")
             return run_id
     
     def get_all_runs(
-        self, 
-        run_type: str = None, 
-        config_type: str = None
+        self,
+        run_type: str = None
     ) -> pd.DataFrame:
         """
         Get summary of all backtest runs, optionally filtered
-        
+
         Args:
             run_type: Filter by 'production' or 'development' (None = all)
-            config_type: Filter by 'A', 'B', or 'C' (None = all)
         """
         query = """
-            SELECT 
+            SELECT
                 id,
                 run_date,
                 run_type,
-                config_type,
                 description,
                 initial_capital,
                 final_value,
@@ -218,36 +196,28 @@ class DatabaseManager:
             WHERE 1=1
         """
         params = []
-        
+
         if run_type:
             query += " AND run_type = ?"
             params.append(run_type)
-        
-        if config_type:
-            query += " AND config_type = ?"
-            params.append(config_type)
-        
+
         query += " ORDER BY run_date DESC"
-        
+
         with sqlite3.connect(self.db_path) as conn:
             df = pd.read_sql_query(query, conn, params=params)
-            
+
             if len(df) > 0:
                 df['run_date'] = pd.to_datetime(df['run_date'])
-            
+
             return df
     
-    def get_production_runs(self, config_type: str = None) -> pd.DataFrame:
-        """Get all production runs, optionally filtered by config"""
-        return self.get_all_runs(run_type='production', config_type=config_type)
-    
-    def get_development_runs(self, config_type: str = None) -> pd.DataFrame:
-        """Get all development runs, optionally filtered by config"""
-        return self.get_all_runs(run_type='development', config_type=config_type)
-    
-    def get_runs_by_config(self, config_type: str) -> pd.DataFrame:
-        """Get all runs for a specific config (A, B, or C)"""
-        return self.get_all_runs(config_type=config_type)
+    def get_production_runs(self) -> pd.DataFrame:
+        """Get all production runs"""
+        return self.get_all_runs(run_type='production')
+
+    def get_development_runs(self) -> pd.DataFrame:
+        """Get all development runs"""
+        return self.get_all_runs(run_type='development')
     
     def get_run_details(self, run_id: int) -> Tuple[Optional[pd.Series], Optional[pd.DataFrame]]:
         """Get detailed results for a specific backtest run"""
@@ -273,21 +243,16 @@ class DatabaseManager:
             return run_df.iloc[0], trades_df
     
     def get_latest_run(
-        self, 
-        run_type: str = None, 
-        config_type: str = None
+        self,
+        run_type: str = None
     ) -> Tuple[Optional[pd.Series], Optional[pd.DataFrame]]:
         """Get the most recent backtest run, optionally filtered"""
         query = "SELECT MAX(id) FROM backtest_runs WHERE 1=1"
         params = []
-        
+
         if run_type:
             query += " AND run_type = ?"
             params.append(run_type)
-        
-        if config_type:
-            query += " AND config_type = ?"
-            params.append(config_type)
         
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -300,11 +265,10 @@ class DatabaseManager:
             return None, None
     
     def get_comparison_summary(self) -> pd.DataFrame:
-        """Get summary for comparing across configs and run types"""
+        """Get summary for comparing across run types"""
         query = """
-            SELECT 
+            SELECT
                 run_type,
-                config_type,
                 COUNT(*) as num_runs,
                 AVG(cagr) as avg_cagr,
                 AVG(total_return_pct) as avg_return,
@@ -313,8 +277,8 @@ class DatabaseManager:
                 SUM(total_trades) as total_trades,
                 MAX(run_date) as last_run
             FROM backtest_runs
-            GROUP BY run_type, config_type
-            ORDER BY run_type, config_type
+            GROUP BY run_type
+            ORDER BY run_type
         """
         
         with sqlite3.connect(self.db_path) as conn:
@@ -330,29 +294,24 @@ class DatabaseManager:
             conn.commit()
             print(f"✅ Deleted backtest run #{run_id}")
     
-    def delete_all_runs(self, run_type: str = None, config_type: str = None, confirm: bool = False):
+    def delete_all_runs(self, run_type: str = None, confirm: bool = False):
         """
         Delete multiple runs (with safeguards)
-        
+
         Args:
             run_type: Filter by run type (None = all)
-            config_type: Filter by config (None = all)
             confirm: Must be True to actually delete
         """
         if not confirm:
             print("⚠️  Set confirm=True to actually delete runs")
             return
-        
+
         query = "SELECT id FROM backtest_runs WHERE 1=1"
         params = []
-        
+
         if run_type:
             query += " AND run_type = ?"
             params.append(run_type)
-        
-        if config_type:
-            query += " AND config_type = ?"
-            params.append(config_type)
         
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -378,7 +337,7 @@ if __name__ == "__main__":
     
     if len(runs) > 0:
         print("\nRecent runs:")
-        print(runs[['id', 'run_type', 'config_type', 'cagr', 'win_rate']].head(10))
-        
+        print(runs[['id', 'run_type', 'cagr', 'win_rate']].head(10))
+
         print("\nComparison summary:")
         print(db.get_comparison_summary())

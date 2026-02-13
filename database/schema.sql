@@ -1,12 +1,11 @@
 -- Weinstein Trading System Database Schema
--- Multi-Model System Schema with Config Support
+-- Multi-Model System Schema
 
 -- Backtest runs table
 CREATE TABLE IF NOT EXISTS backtest_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     run_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     run_type TEXT DEFAULT 'development',  -- 'production' or 'development'
-    config_type TEXT DEFAULT 'A',          -- 'A', 'B', or 'C'
     description TEXT,
     initial_capital REAL,
     final_value REAL,
@@ -22,10 +21,8 @@ CREATE TABLE IF NOT EXISTS backtest_runs (
     parameters TEXT  -- JSON string of parameters used
 );
 
--- Index for filtering by run_type and config_type
+-- Index for filtering by run_type
 CREATE INDEX IF NOT EXISTS idx_backtest_run_type ON backtest_runs(run_type);
-CREATE INDEX IF NOT EXISTS idx_backtest_config_type ON backtest_runs(config_type);
-CREATE INDEX IF NOT EXISTS idx_backtest_run_config ON backtest_runs(run_type, config_type);
 
 -- Individual trades table
 CREATE TABLE IF NOT EXISTS trades (
