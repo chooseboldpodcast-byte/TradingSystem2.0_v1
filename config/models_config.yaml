@@ -16,20 +16,22 @@ portfolio:
 models:
   - momentum_52w_high
   - vcp
-  - rs_breakout
-  - consolidation_breakout
-  - high_tight_flag
-  - rsi_mean_reversion
-  - pocket_pivot
+  #- rs_breakout
+  #- consolidation_breakout
+  #- high_tight_flag
+  #- rsi_mean_reversion
+  #- pocket_pivot
+  - weinstein_core
 
 allocations:
-  momentum_52w_high: 0.20
-  vcp: 0.20
-  rs_breakout: 0.10
-  consolidation_breakout: 0.10
-  high_tight_flag: 0.10
-  rsi_mean_reversion: 0.10
-  pocket_pivot: 0.10
+  momentum_52w_high: 0.25
+  vcp: 0.25
+  #rs_breakout: 0.07
+  #consolidation_breakout: 0.10
+  #high_tight_flag: 0.05
+  #rsi_mean_reversion: 0.10
+  #pocket_pivot: 0.07
+  weinstein_core: 0.40
 
 total_allocation: 0.90  # 90% deployed, 10% cash (5% reserve + unallocated)
 
@@ -185,6 +187,24 @@ model_params:
     inbound_trend_lookback: 22
     version: "v3.0"
     pattern_rarity: "rare"
+
+# ============================================================================
+# SCANNER SETTINGS (Minervini Trend Template)
+# ============================================================================
+# Enable with: python scripts/run_prod_backtest.py --scanner
+
+scanner:
+  min_price: 3.0
+  max_price: 10000.0
+  min_avg_volume: 200000
+  min_market_cap: 500000000
+  exclude_sectors:
+    - Biotechnology
+  trend_template:
+    rs_rating_min: 70
+    max_pct_from_high: 25
+    min_pct_above_low: 30
+    ma_rising_days: 20
 
 # ============================================================================
 # DATABASE SETTINGS

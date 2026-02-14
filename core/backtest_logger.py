@@ -123,6 +123,30 @@ class PositionEvent:
     exit_reason: Optional[str] = None
 
 
+@dataclass
+class ScannerCriterionResult:
+    """Record of a single scanner criterion check"""
+    symbol: str
+    criterion: str
+    passed: bool
+    value: Optional[float] = None
+    threshold: Optional[float] = None
+
+
+@dataclass
+class ScannerSymbolResult:
+    """Record of a symbol's full scanner evaluation"""
+    symbol: str
+    passed: bool
+    criteria_results: Dict = field(default_factory=dict)
+    criteria_values: Dict = field(default_factory=dict)
+    failure_reason: Optional[str] = None
+    rs_rating: Optional[float] = None
+    price: Optional[float] = None
+    pct_from_52w_high: Optional[float] = None
+    pct_above_52w_low: Optional[float] = None
+
+
 class BacktestLogger:
     """
     Comprehensive backtest logging system
@@ -163,6 +187,10 @@ class BacktestLogger:
         self.capital_snapshots: List[CapitalStateSnapshot] = []
         self.position_events: List[PositionEvent] = []
 
+        # Scanner data stores
+        self.scanner_results: List[ScannerSymbolResult] = []
+        self.scanner_summary: Dict = {}
+
         # Setup Python logging
         self._setup_logging(console_level, file_level)
 
@@ -200,6 +228,79 @@ class BacktestLogger:
         )
         file_handler.setFormatter(file_format)
         self.logger.addHandler(file_handler)
+
+    # =========================================================================
+    # SCANNER LOGGING
+    # =========================================================================
+
+    def log_scanner_start(self, total_symbols: int, core_universe_size: int, scanner_config: Dict):
+        """Log the start of a scanner run"""
+        self.scanner_summary['start_time'] = datetime.now().isoformat()
+        self.scanner_summary['total_symbols'] = total_symbols
+        self.scanner_summary['core_universe_size'] = core_universe_size
+        self.scanner_summary['config'] = scanner_config
+
+        self.logger.info(
+            f"SCANNER START: {total_symbols} symbols to scan | "
+            f"Core universe: {core_universe_size}"
+        )
+
+    def log_scanner_symbol_result(self, result: 'ScannerSymbolResult'):
+        """Log the result of scanning a single symbol"""
+        self.scanner_results.append(result)
+
+        status = "PASS" if result.passed else "FAIL"
+        msg = f"SCANNER {status}: {result.symbol}"
+        if result.price is not None:
+            msg += f" | Price=${result.price:.2f}"
+        if result.rs_rating is not None:
+            msg += f" | RS={result.rs_rating:.1f}"
+        if not result.passed and result.failure_reason:
+            msg += f" | Reason={result.failure_reason}"
+
+        self.logger.debug(msg)
+
+    def log_scanner_criterion_check(
+        self,
+        symbol: str,
+        criterion: str,
+        passed: bool,
+        value: float = None,
+        threshold: float = None
+    ):
+        """Log an individual criterion check for a symbol"""
+        status = "PASS" if passed else "FAIL"
+        msg = f"SCANNER CRITERION {status}: {symbol} | {criterion}"
+        if value is not None:
+            msg += f" | Value={value:.2f}"
+        if threshold is not None:
+            msg += f" | Threshold={threshold:.2f}"
+
+        self.logger.debug(msg)
+
+    def log_scanner_complete(self, final_universe: list):
+        """Log scanner completion with summary stats"""
+        total_scanned = len(self.scanner_results)
+        total_passed = len([r for r in self.scanner_results if r.passed])
+        total_failed = total_scanned - total_passed
+
+        self.scanner_summary['end_time'] = datetime.now().isoformat()
+        self.scanner_summary['total_scanned'] = total_scanned
+        self.scanner_summary['total_passed'] = total_passed
+        self.scanner_summary['total_failed'] = total_failed
+        self.scanner_summary['final_universe_size'] = len(final_universe)
+
+        # Count failure reasons
+        failure_reasons = {}
+        for r in self.scanner_results:
+            if not r.passed and r.failure_reason:
+                failure_reasons[r.failure_reason] = failure_reasons.get(r.failure_reason, 0) + 1
+        self.scanner_summary['failure_reasons'] = failure_reasons
+
+        self.logger.info(
+            f"SCANNER COMPLETE: {total_passed}/{total_scanned} passed | "
+            f"Final universe: {len(final_universe)} stocks"
+        )
 
     # =========================================================================
     # SIGNAL LOGGING
@@ -405,7 +506,7 @@ class BacktestLogger:
 
     def get_summary(self) -> Dict:
         """Get summary statistics"""
-        return {
+        summary = {
             'run_id': self.run_id,
             'signals': {
                 'total_generated': len(self.signal_events),
@@ -421,6 +522,9 @@ class BacktestLogger:
                 'total_closed': len([p for p in self.position_events if p.event_type == 'CLOSE'])
             }
         }
+        if self.scanner_summary:
+            summary['scanner'] = self.scanner_summary
+        return summary
 
     def _count_rejections_by_reason(self) -> Dict[str, int]:
         """Count rejections by reason"""
@@ -480,6 +584,16 @@ class BacktestLogger:
                 json.dump([asdict(p) for p in self.position_events], f, indent=2, default=str)
             self.logger.info(f"  Position events: {positions_file}")
 
+        # Save scanner results
+        if self.scanner_results:
+            scanner_file = os.path.join(self.run_log_dir, 'scanner_results.json')
+            with open(scanner_file, 'w') as f:
+                json.dump({
+                    'summary': self.scanner_summary,
+                    'results': [asdict(r) for r in self.scanner_results]
+                }, f, indent=2, default=str)
+            self.logger.info(f"  Scanner results: {scanner_file}")
+
         # Save summary
         summary_file = os.path.join(self.run_log_dir, 'summary.json')
         with open(summary_file, 'w') as f:
@@ -495,6 +609,24 @@ class BacktestLogger:
         print(f"\n{'='*60}")
         print(f"DIAGNOSTIC LOG SUMMARY")
         print(f"{'='*60}")
+
+        # Scanner summary
+        if 'scanner' in summary:
+            scanner = summary['scanner']
+            print(f"\nSCANNER:")
+            print(f"  Total scanned: {scanner.get('total_scanned', 0)}")
+            print(f"  Passed template: {scanner.get('total_passed', 0)}")
+            print(f"  Failed template: {scanner.get('total_failed', 0)}")
+            print(f"  Final universe: {scanner.get('final_universe_size', 0)}")
+            failure_reasons = scanner.get('failure_reasons', {})
+            if failure_reasons:
+                print(f"  Top failure reasons:")
+                for reason, count in sorted(
+                    failure_reasons.items(),
+                    key=lambda x: x[1],
+                    reverse=True
+                )[:5]:
+                    print(f"    - {reason}: {count}")
 
         # Signal summary
         print(f"\nSIGNALS:")

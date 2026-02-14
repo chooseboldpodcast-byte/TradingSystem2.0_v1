@@ -51,6 +51,7 @@ from core.backtest_logger import BacktestLogger
 from core.market_context import MarketContextAnalyzer
 from core.market_regime import MarketRegime
 from database.db_manager import DatabaseManager
+from scanner.universe_scanner import UniverseScanner
 
 # Sector ETFs for rotation tracking
 SECTOR_ETFS = ['XLK', 'XLF', 'XLE', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC']
@@ -1023,6 +1024,8 @@ def main():
                        help='Enable Phase 0 market regime filter (reduces exposure in bear/crisis markets)')
     parser.add_argument('--crisis-only', action='store_true',
                        help='Only filter during CRISIS (VIX > 35). Ignores BEAR/CAUTION regimes.')
+    parser.add_argument('--scanner', action='store_true',
+                       help='Enable Minervini Trend Template scanner to expand universe')
 
     args = parser.parse_args()
 
@@ -1064,12 +1067,45 @@ def main():
             print(f"Market Regime Filter: ENABLED (Phase 0 - Full)")
     else:
         print(f"Market Regime Filter: DISABLED (baseline mode)")
+    if args.scanner:
+        print(f"Scanner: ENABLED (Minervini Trend Template)")
+    else:
+        print(f"Scanner: DISABLED (using live_universe.txt only)")
     print("="*80)
 
-    # Load universe from core universe file
+    # Load universe
     core_path = config.get('paths', {}).get('core_universe', 'live_universe.txt')
-    with open(core_path, 'r') as f:
-        universe = [line.strip() for line in f if line.strip()]
+    data_dir = config.get('paths', {}).get('data_dir', 'data')
+
+    if args.scanner:
+        # Scanner mode: use Minervini Trend Template to expand universe
+        scanner_config = config.get('scanner', {})
+        tt_config = scanner_config.get('trend_template', {})
+
+        scanner = UniverseScanner(
+            core_universe_path=core_path,
+            min_price=scanner_config.get('min_price', 3.0),
+            max_price=scanner_config.get('max_price', 10000.0),
+            min_avg_volume=scanner_config.get('min_avg_volume', 200000),
+            min_market_cap=scanner_config.get('min_market_cap', 500_000_000),
+            exclude_sectors=scanner_config.get('exclude_sectors', ['Biotechnology']),
+            logger=bt_logger
+        )
+
+        # Configure trend template thresholds from yaml
+        scanner.trend_template.min_rs_rating = tt_config.get('rs_rating_min', 70)
+        scanner.trend_template.max_pct_from_high = tt_config.get('max_pct_from_high', 25.0)
+        scanner.trend_template.min_pct_above_low = tt_config.get('min_pct_above_low', 30.0)
+        scanner.trend_template.ma_rising_days = tt_config.get('ma_rising_days', 20)
+
+        print(f"\nRunning Minervini Trend Template scanner...")
+        universe = scanner.quick_scan(data_dir)
+        print(f"Scanner universe: {len(universe)} stocks")
+    else:
+        # Default: load from live_universe.txt (unchanged behavior)
+        with open(core_path, 'r') as f:
+            universe = [line.strip() for line in f if line.strip()]
+
     # Add index symbols
     universe.extend(['^GSPC', 'GSPC', 'SPY'])
     # Add sector ETFs for regime filter (will be loaded separately)
@@ -1078,7 +1114,6 @@ def main():
     universe = list(set(universe))  # Remove duplicates
     
     # Load data
-    data_dir = config.get('paths', {}).get('data_dir', 'data')
     all_data = load_stock_data(data_dir=data_dir, min_year=min_year, universe=universe)
     
     # Separate index data
@@ -1135,6 +1170,7 @@ def main():
                 'models': [m.name for m in models],
                 'universe_size': len(all_data),
                 'min_year': min_year,
+                'scanner_enabled': args.scanner,
                 'regime_filter_enabled': args.enable_regime_filter,
                 'sector_etfs_loaded': len(sector_data) if args.enable_regime_filter else 0,
                 'regime_changes': len(backtest.regime_stats['regime_changes']) if args.enable_regime_filter else 0
